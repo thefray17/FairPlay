@@ -1,0 +1,81 @@
+@import "tailwindcss";
+
+/* 1. Base scrolling mechanics and layout shift prevention */
+html,
+body {
+  /* Prevent content layout shifts on desktop without reserving gutter */
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
+}
+
+html,
+body,
+* {
+  /* 3. Modern standards (Firefox / Android Chrome recent builds) */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(71, 85, 105, 0.45) transparent;
+}
+
+/* Explicit .scroll-container class */
+.scroll-container {
+  /* 1. Scrolling mechanics */
+  overflow-y: auto;
+  overflow-x: hidden;
+
+  /* Smooth momentum scrolling for iOS WebKit */
+  -webkit-overflow-scrolling: touch;
+
+  /* 2. Prevent content layout shifts on desktop without reserving gutter */
+  scrollbar-gutter: stable;
+
+  /* 3. Modern standards (Firefox / Android Chrome recent builds) */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(71, 85, 105, 0.45) transparent;
+}
+
+/* 4. Desktop WebKit (Chrome, Edge, macOS Safari) floating treatment */
+*::-webkit-scrollbar,
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+  background: transparent;
+}
+
+*::-webkit-scrollbar-track,
+::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 2px;
+}
+
+*::-webkit-scrollbar-thumb,
+::-webkit-scrollbar-thumb {
+  background-color: rgba(71, 85, 105, 0.45);
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+  min-height: 28px;
+  min-width: 28px;
+}
+
+*::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(15, 23, 42, 0.75);
+}
+
+*::-webkit-scrollbar-thumb:active,
+::-webkit-scrollbar-thumb:active {
+  background-color: rgba(15, 23, 42, 0.95);
+}
+
+*::-webkit-scrollbar-corner,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Smooth momentum scrolling for generic overflow containers */
+.overflow-x-auto,
+.overflow-y-auto,
+.overflow-auto {
+  -webkit-overflow-scrolling: touch;
+}
+

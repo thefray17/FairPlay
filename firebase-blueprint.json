@@ -1,0 +1,123 @@
+{
+  "entities": {
+    "sessions": {
+      "title": "Session",
+      "description": "Badminton tournament and open-play rotation session state synced across devices",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Session code (e.g. 7429, BDM-7429)"
+        },
+        "config": {
+          "type": "object",
+          "description": "Session configuration including sport, match format, courts, points, and timers"
+        },
+        "players": {
+          "type": "array",
+          "description": "List of enrolled tournament players"
+        },
+        "rounds": {
+          "type": "array",
+          "description": "Generated and completed tournament rounds with scores"
+        },
+        "upcomingMatches": {
+          "type": "array",
+          "description": "Upcoming queued matches"
+        },
+        "openPlay": {
+          "type": "object",
+          "description": "Open Play 3-bucket state: active matches, winners queue, losers queue, resting bench, history"
+        },
+        "updatedAt": {
+          "type": "number",
+          "description": "Epoch timestamp in milliseconds of latest update"
+        },
+        "createdAt": {
+          "type": "number",
+          "description": "Epoch timestamp in milliseconds of session creation"
+        }
+      },
+      "required": ["id", "updatedAt"]
+    },
+    "users": {
+      "title": "User",
+      "description": "User accounts and organizer profiles for future authentication and profile management",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Firebase Auth UID"
+        },
+        "email": {
+          "type": "string",
+          "description": "Email address"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Display name"
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "Avatar image URL"
+        },
+        "role": {
+          "type": "string",
+          "description": "Role: organizer, player, or admin"
+        },
+        "createdAt": {
+          "type": "number",
+          "description": "Creation timestamp"
+        },
+        "updatedAt": {
+          "type": "number",
+          "description": "Last update timestamp"
+        }
+      },
+      "required": ["id"]
+    },
+    "playerProfiles": {
+      "title": "PlayerProfile",
+      "description": "Player identity and statistics saved across sessions",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique player profile identifier"
+        },
+        "name": {
+          "type": "string",
+          "description": "Player full name"
+        },
+        "gender": {
+          "type": "string",
+          "description": "Gender: M or F"
+        },
+        "skillLevel": {
+          "type": "string",
+          "description": "Skill level: Beginner, Intermediate, Advanced, Pro"
+        },
+        "rating": {
+          "type": "number",
+          "description": "Player rating/elo"
+        },
+        "matchesPlayed": {
+          "type": "number",
+          "description": "Total matches played"
+        },
+        "wins": {
+          "type": "number",
+          "description": "Total matches won"
+        },
+        "losses": {
+          "type": "number",
+          "description": "Total matches lost"
+        }
+      },
+      "required": ["id", "name"]
+    }
+  },
+  "securityRules": {
+    "rules": "rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /sessions/{sessionId} {\n      allow read: if true;\n      allow write: if request.resource.data.id is string && request.resource.data.id.size() > 0 && request.resource.data.id.size() <= 64;\n    }\n    match /users/{userId} {\n      allow read: if true;\n      allow write: if request.auth != null && request.auth.uid == userId;\n    }\n    match /playerProfiles/{profileId} {\n      allow read: if true;\n      allow write: if request.resource.data.name is string && request.resource.data.name.size() > 0;\n    }\n  }\n}"
+  }
+}

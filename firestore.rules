@@ -1,0 +1,26 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Sessions: allow reading and writing by session code (e.g. 7429, BDM-7429)
+    // Enables multi-device QR transfer and real-time syncing for badminton clubs
+    match /sessions/{sessionId} {
+      allow read: if true;
+      allow write: if request.resource.data.id is string
+                   && request.resource.data.id.size() > 0
+                   && request.resource.data.id.size() <= 64;
+    }
+
+    // User accounts and profiles (foundation for organizer/player authentication)
+    match /users/{userId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Player profiles across sessions
+    match /playerProfiles/{profileId} {
+      allow read: if true;
+      allow write: if request.resource.data.name is string
+                   && request.resource.data.name.size() > 0;
+    }
+  }
+}
