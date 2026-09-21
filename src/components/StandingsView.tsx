@@ -24,6 +24,8 @@ interface StandingsViewProps {
   players: Player[];
   rounds: Round[];
   config: SessionConfig;
+  onNavigateToBracket?: () => void;
+  hasActiveBracket?: boolean;
 }
 
 type SortField = 'rank' | 'name' | 'mp' | 'won' | 'diff' | 'winRate' | 'pf';
@@ -32,6 +34,8 @@ export const StandingsView: React.FC<StandingsViewProps> = ({
   players,
   rounds,
   config,
+  onNavigateToBracket,
+  hasActiveBracket,
 }) => {
   const [viewTab, setViewTab] = useState<'leaderboard' | 'h2h' | 'teams'>('leaderboard');
   const [selectedRoundFilter, setSelectedRoundFilter] = useState<number | 'all'>('all');
@@ -190,12 +194,27 @@ export const StandingsView: React.FC<StandingsViewProps> = ({
             </select>
           </div>
 
+          {onNavigateToBracket && (
+            <button
+              type="button"
+              id="btn-standings-open-bracket"
+              onClick={onNavigateToBracket}
+              className="inline-flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2.5 rounded-xl sm:rounded-2xl bg-amber-400 hover:bg-amber-300 text-indigo-950 font-black text-xs uppercase tracking-wider transition-all shadow-xs cursor-pointer"
+              title="Open or Seed Single Elimination Playoff Bracket"
+              aria-label="Open Playoff Bracket"
+            >
+              <Swords className="w-3.5 h-3.5" />
+              <span>{hasActiveBracket ? 'View Bracket' : 'Start Bracket'}</span>
+            </button>
+          )}
+
           <button
             type="button"
             id="btn-copy-standings"
             onClick={handleCopyStandings}
             className="inline-flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2.5 rounded-xl sm:rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs uppercase tracking-wider transition-all shadow-xs cursor-pointer"
             title="Copy formatted standings to post in Reclub, WhatsApp, or Telegram"
+            aria-label="Copy formatted standings"
           >
             {copied ? (
               <>
@@ -214,6 +233,7 @@ export const StandingsView: React.FC<StandingsViewProps> = ({
             onClick={handleDownloadCsv}
             className="p-1.5 sm:p-2.5 rounded-xl sm:rounded-2xl border border-slate-200 text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
             title="Export CSV spreadsheet"
+            aria-label="Export CSV spreadsheet"
           >
             <Download className="w-4 h-4" />
           </button>
@@ -497,19 +517,21 @@ export const StandingsView: React.FC<StandingsViewProps> = ({
 
                     <div className="flex items-center gap-1">
                       <span className="text-[9px] sm:text-[10px] text-slate-400 uppercase font-black mr-0.5">Form:</span>
-                      {(row.recentForm || []).length === 0 ? (
+                      {(!row.recentFormDetails || row.recentFormDetails.length === 0) && (!row.recentForm || row.recentForm.length === 0) ? (
                         <span className="text-[10px] text-slate-400 italic">None</span>
                       ) : (
-                        (row.recentForm || []).slice(-4).map((res, i) => (
-                          <span
-                            key={i}
-                            className={`w-3.5 h-3.5 sm:w-4 sm:h-4 rounded text-[9px] font-black text-white flex items-center justify-center ${
-                              res === 'W' ? 'bg-indigo-600' : res === 'L' ? 'bg-rose-500' : 'bg-slate-400'
-                            }`}
-                          >
-                            {res}
-                          </span>
-                        ))
+                        (row.recentFormDetails || row.recentForm.map((res, idx) => ({ matchId: `legacy-${idx}`, result: res })))
+                          .slice(-4)
+                          .map((item) => (
+                            <span
+                              key={`card-form-${row.playerId}-${item.matchId}`}
+                              className={`w-3.5 h-3.5 sm:w-4 sm:h-4 rounded text-[9px] font-black text-white flex items-center justify-center ${
+                                item.result === 'W' ? 'bg-indigo-600' : item.result === 'L' ? 'bg-rose-500' : 'bg-slate-400'
+                              }`}
+                            >
+                              {item.result}
+                            </span>
+                          ))
                       )}
                     </div>
                   </div>
@@ -685,23 +707,24 @@ export const StandingsView: React.FC<StandingsViewProps> = ({
 
                     <td className="py-3 px-4 text-center">
                       <div className="flex items-center justify-center gap-1">
-                        {(row.recentForm || []).length === 0 ? (
+                        {(!row.recentFormDetails || row.recentFormDetails.length === 0) && (!row.recentForm || row.recentForm.length === 0) ? (
                           <span className="text-slate-400 text-[10px]">-</span>
                         ) : (
-                          (row.recentForm || []).map((res, i) => (
-                            <span
-                              key={i}
-                              className={`w-4 h-4 rounded-md text-[9px] font-black flex items-center justify-center text-white ${
-                                res === 'W'
-                                  ? 'bg-indigo-600'
-                                  : res === 'L'
-                                  ? 'bg-rose-500'
-                                  : 'bg-slate-400'
-                              }`}
-                            >
-                              {res}
-                            </span>
-                          ))
+                          (row.recentFormDetails || row.recentForm.map((res, idx) => ({ matchId: `legacy-${idx}`, result: res })))
+                            .map((item) => (
+                              <span
+                                key={`table-form-${row.playerId}-${item.matchId}`}
+                                className={`w-4 h-4 rounded-md text-[9px] font-black flex items-center justify-center text-white ${
+                                  item.result === 'W'
+                                    ? 'bg-indigo-600'
+                                    : item.result === 'L'
+                                    ? 'bg-rose-500'
+                                    : 'bg-slate-400'
+                                }`}
+                              >
+                                {item.result}
+                              </span>
+                            ))
                         )}
                       </div>
                     </td>

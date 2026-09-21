@@ -1,4 +1,5 @@
-import { Match, Player, Round, StandingsRow } from '../types';
+import { Bracket, Match, Player, Round, StandingsRow } from '../types';
+import { getBracketRoundName } from './bracket';
 
 export function calculateStandings(
   players: Player[],
@@ -16,6 +17,7 @@ export function calculateStandings(
       pointsFor: number;
       pointsAgainst: number;
       recentForm: ('W' | 'L' | 'D')[];
+      recentFormDetails: { matchId: string; result: 'W' | 'L' | 'D' }[];
     }
   > = {};
 
@@ -28,6 +30,7 @@ export function calculateStandings(
       pointsFor: 0,
       pointsAgainst: 0,
       recentForm: [],
+      recentFormDetails: [],
     };
   });
 
@@ -69,6 +72,7 @@ export function calculateStandings(
         else if (result1 === 'L') stats[pid].lost += 1;
         else stats[pid].tied += 1;
         stats[pid].recentForm.push(result1);
+        stats[pid].recentFormDetails.push({ matchId: match.id, result: result1 });
       });
 
       // Update team 2 stats
@@ -81,6 +85,7 @@ export function calculateStandings(
         else if (result2 === 'L') stats[pid].lost += 1;
         else stats[pid].tied += 1;
         stats[pid].recentForm.push(result2);
+        stats[pid].recentFormDetails.push({ matchId: match.id, result: result2 });
       });
     });
   });
@@ -99,6 +104,7 @@ export function calculateStandings(
       pointsFor: 0,
       pointsAgainst: 0,
       recentForm: [],
+      recentFormDetails: [],
     };
     const pointDiff = s.pointsFor - s.pointsAgainst;
     const winRate =
@@ -127,6 +133,7 @@ export function calculateStandings(
       winRate,
       recentForm: s.recentForm.slice(-5), // last 5 results
       form: s.recentForm.slice(-5),
+      recentFormDetails: s.recentFormDetails.slice(-5),
       active: p.active,
       fairnessStatus,
       cycleNumber: minPlayed + 1,
@@ -177,5 +184,80 @@ export function formatStandingsForSharing(
   });
 
   text += `\nGenerated with FairClub - Fair Match Equal Rotation & Standings`;
+  return text;
+}
+
+/**
+ * Format combined tournament results (Pool Standings + Playoff Bracket + Champion)
+ * as clean, publication-ready text for club communities.
+ */
+export function formatCombinedTournamentForSharing(
+  sessionName: string,
+  standings: StandingsRow[],
+  completedRounds: number,
+  bracket?: Bracket | null,
+  playersMap?: Record<string, Player>
+): string {
+  const dateStr = new Date().toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+
+  let text = `🏆 *${sessionName.toUpperCase()} - TOURNAMENT RESULTS*\n`;
+  text += `📅 ${dateStr} • ${completedRounds} Pool Rounds + Playoff Bracket\n`;
+  text += `⚖️ Powered by FairClub\n\n`;
+
+  // Bracket Champion Section
+  if (bracket?.championPlayerIds && bracket.championPlayerIds.length > 0) {
+    const championNames = bracket.championPlayerIds
+      .map((id) => playersMap?.[id]?.name || id)
+      .join(' & ');
+    text += `👑 *TOURNAMENT CHAMPION:* ${championNames} 🏆\n\n`;
+  }
+
+  text += `📊 *POOL PLAY FINAL STANDINGS*\n`;
+  text += `Rank | Player | W-L | Diff | Win%\n`;
+  text += `------------------------------------\n`;
+
+  standings.forEach((row, idx) => {
+    const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`;
+    const diff = row.pointDiff > 0 ? `+${row.pointDiff}` : `${row.pointDiff}`;
+    text += `${medal} ${row.playerName}: ${row.won}W-${row.lost}L (${diff} diff) • ${row.winRate}%\n`;
+  });
+
+  // Bracket Match Summary if bracket exists
+  if (bracket && bracket.matches.length > 0) {
+    text += `\n⚔️ *PLAYOFF BRACKET MATCHES*\n`;
+    const totalRounds = Math.round(Math.log2(bracket.size || 2));
+    for (let r = 1; r <= totalRounds; r++) {
+      const roundMatches = bracket.matches.filter((m) => m.round === r);
+      if (roundMatches.length === 0) continue;
+      const roundName = getBracketRoundName(r, totalRounds);
+      text += `\n*${roundName}:*\n`;
+      roundMatches.forEach((m) => {
+        if (m.slotA?.isBye && m.slotB?.isBye) return;
+        const nameA = m.slotA?.isBye
+          ? 'BYE'
+          : m.slotA?.playerIds.map((id) => playersMap?.[id]?.name || id).join(' & ') || 'TBD';
+        const nameB = m.slotB?.isBye
+          ? 'BYE'
+          : m.slotB?.playerIds.map((id) => playersMap?.[id]?.name || id).join(' & ') || 'TBD';
+        const scoreStr =
+          m.winnerSlot !== undefined
+            ? `(${m.score1 ?? 0} - ${m.score2 ?? 0})`
+            : '(In Progress)';
+        const winnerIndicator =
+          m.winnerSlot === 'A'
+            ? `➔ Winner: ${nameA}`
+            : m.winnerSlot === 'B'
+            ? `➔ Winner: ${nameB}`
+            : '';
+        text += `• ${nameA} vs ${nameB} ${scoreStr} ${winnerIndicator}\n`;
+      });
+    }
+  }
+
+  text += `\nGenerated with FairClub - Fair Match Equal Rotation, Pool Play & Playoff Brackets`;
   return text;
 }

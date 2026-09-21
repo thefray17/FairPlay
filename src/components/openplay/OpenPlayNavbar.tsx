@@ -12,6 +12,7 @@ import {
   Users,
   Settings,
 } from 'lucide-react';
+import { PWAInstallButton } from '../common/PWAInstallButton';
 
 interface OpenPlayNavbarProps {
   config: OpenPlayConfig;
@@ -51,7 +52,7 @@ export const OpenPlayNavbar: React.FC<OpenPlayNavbarProps> = ({
   lastSyncedAt = null,
   onManualSync,
 }) => {
-  const displaySessionId = sessionId ? sanitizeSessionCode(sessionId) : '7429';
+  const displaySessionId = sessionId ? sanitizeSessionCode(sessionId) : '';
 
   const handleTransferClick = () => {
     if (onOpenTransfer) {
@@ -96,10 +97,14 @@ export const OpenPlayNavbar: React.FC<OpenPlayNavbarProps> = ({
               onClick={onNavigateToSocial}
               className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white font-black text-xs transition-all shadow-sm active:scale-95 cursor-pointer shrink-0"
               title="Switch to FairPlay Social Matches"
+              aria-label="Switch to FairPlay Social Matches"
             >
               <RotateCcw className="w-3.5 h-3.5 text-yellow-300 shrink-0" />
               <span className="hidden sm:inline">Social</span>
             </button>
+
+            {/* PWA Install Button */}
+            <PWAInstallButton variant="openplay" />
 
             {/* Session ID & Transfer Handover Button */}
             <button
@@ -108,9 +113,10 @@ export const OpenPlayNavbar: React.FC<OpenPlayNavbarProps> = ({
               onClick={handleTransferClick}
               className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-yellow-400 hover:bg-yellow-300 text-emerald-950 font-black text-xs transition-all shadow-sm active:scale-95 cursor-pointer shrink-0"
               title="Transfer Session to another phone or sync matches"
+              aria-label="Transfer Session to another phone or sync matches"
             >
               <Smartphone className="w-3.5 h-3.5 text-emerald-950 shrink-0" />
-              <span className="font-mono font-black text-[11px] sm:text-xs tracking-wider">{displaySessionId}</span>
+              <span className="font-mono font-black text-[11px] sm:text-xs tracking-wider">{displaySessionId || 'Session'}</span>
             </button>
           </div>
         </div>
@@ -206,6 +212,7 @@ export const OpenPlayNavbar: React.FC<OpenPlayNavbarProps> = ({
             onClick={onOpenConfig}
             className="flex items-center gap-1.5 py-1.5 ml-auto text-emerald-200 hover:text-white transition-colors whitespace-nowrap cursor-pointer"
             title="Open Play Settings"
+            aria-label="Open Play Settings"
           >
             <Settings className="w-4 h-4 text-yellow-400" />
             <span>Settings</span>

@@ -214,6 +214,7 @@ export const OpenPlayQueueBoard: React.FC<OpenPlayQueueBoardProps> = ({
             onClick={() => onMovePlayerWithinBucket(bucket, index, 'up')}
             className="p-1 text-slate-400 hover:text-slate-800 disabled:opacity-20 cursor-pointer"
             title="Move Up"
+            aria-label="Move Up"
           >
             <ArrowUp className="w-3.5 h-3.5" />
           </button>
@@ -223,6 +224,7 @@ export const OpenPlayQueueBoard: React.FC<OpenPlayQueueBoardProps> = ({
             onClick={() => onMovePlayerWithinBucket(bucket, index, 'down')}
             className="p-1 text-slate-400 hover:text-slate-800 disabled:opacity-20 cursor-pointer"
             title="Move Down"
+            aria-label="Move Down"
           >
             <ArrowDown className="w-3.5 h-3.5" />
           </button>
@@ -234,6 +236,7 @@ export const OpenPlayQueueBoard: React.FC<OpenPlayQueueBoardProps> = ({
               onClick={() => onTransferPlayerBucket(id, bucket, 'bench')}
               className="p-1 text-slate-400 hover:text-orange-600 rounded transition-colors cursor-pointer"
               title="Move to Resting Bench"
+              aria-label="Move to Resting Bench"
             >
               <Coffee className="w-3.5 h-3.5" />
             </button>
@@ -243,6 +246,7 @@ export const OpenPlayQueueBoard: React.FC<OpenPlayQueueBoardProps> = ({
               onClick={() => onTransferPlayerBucket(id, 'bench', 'losers')}
               className="p-1 text-slate-400 hover:text-teal-600 rounded transition-colors cursor-pointer"
               title="Move to Losers Queue"
+              aria-label="Move to Losers Queue"
             >
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
@@ -254,6 +258,7 @@ export const OpenPlayQueueBoard: React.FC<OpenPlayQueueBoardProps> = ({
               onClick={() => onTransferPlayerBucket(id, 'losers', 'winners')}
               className="p-1 text-slate-400 hover:text-amber-600 rounded transition-colors cursor-pointer"
               title="Promote to Winners Queue"
+              aria-label="Promote to Winners Queue"
             >
               <Trophy className="w-3.5 h-3.5" />
             </button>
@@ -264,6 +269,7 @@ export const OpenPlayQueueBoard: React.FC<OpenPlayQueueBoardProps> = ({
               onClick={() => onTransferPlayerBucket(id, 'winners', 'losers')}
               className="p-1 text-slate-400 hover:text-teal-600 rounded transition-colors cursor-pointer"
               title="Move to Losers Queue"
+              aria-label="Move to Losers Queue"
             >
               <Users className="w-3.5 h-3.5" />
             </button>
@@ -279,6 +285,7 @@ export const OpenPlayQueueBoard: React.FC<OpenPlayQueueBoardProps> = ({
             
             className="p-1 text-slate-400 hover:text-slate-700 cursor-pointer"
             title="Rename"
+            aria-label="Rename"
           >
             <Pencil className="w-3 h-3" />
           </button>
@@ -294,6 +301,7 @@ export const OpenPlayQueueBoard: React.FC<OpenPlayQueueBoardProps> = ({
                 }}
                 className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-black rounded-lg transition-colors cursor-pointer shadow-2xs"
                 title="Confirm Delete"
+                aria-label="Confirm Delete"
               >
                 Delete
               </button>
@@ -302,6 +310,7 @@ export const OpenPlayQueueBoard: React.FC<OpenPlayQueueBoardProps> = ({
                 onClick={() => setConfirmDeleteId(null)}
                 className="px-1.5 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-[10px] font-bold rounded-lg transition-colors cursor-pointer"
                 title="Cancel"
+                aria-label="Cancel delete"
               >
                 ✕
               </button>
@@ -312,6 +321,7 @@ export const OpenPlayQueueBoard: React.FC<OpenPlayQueueBoardProps> = ({
               onClick={() => setConfirmDeleteId(id)}
               className="p-1 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-md cursor-pointer transition-colors"
               title="Remove from session"
+              aria-label="Remove from session"
             >
               <Trash2 className="w-3 h-3" />
             </button>
@@ -341,6 +351,7 @@ export const OpenPlayQueueBoard: React.FC<OpenPlayQueueBoardProps> = ({
               onClick={() => setShowRuleInfo(!showRuleInfo)}
               className="p-1 text-slate-400 hover:text-emerald-700 rounded transition-colors cursor-pointer"
               title="Universal Match Cycle Rules"
+              aria-label="Universal Match Cycle Rules"
             >
               <HelpCircle className="w-4 h-4" />
             </button>
@@ -357,6 +368,7 @@ export const OpenPlayQueueBoard: React.FC<OpenPlayQueueBoardProps> = ({
                 
                 className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-950 font-black text-xs transition-all cursor-pointer active:scale-95 shadow-xs"
                 title="Overwrite Open Play roster with Social Matches roster"
+                aria-label="Overwrite Open Play roster with Social Matches roster"
               >
                 <RotateCcw className="w-3.5 h-3.5 text-indigo-600" />
                 <span>Pull from Social</span>
@@ -411,6 +423,7 @@ export const OpenPlayQueueBoard: React.FC<OpenPlayQueueBoardProps> = ({
               onClick={onToggleNextQueueTurn}
               className="text-[10px] px-2 py-0.5 rounded-lg bg-white/10 hover:bg-white/20 text-yellow-300 font-black uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-colors shrink-0"
               title="Manually alternate next queue turn"
+              aria-label="Manually alternate next queue turn"
             >
               <RotateCcw className="w-3 h-3" />
               <span>Switch to {nextQueueTurn === 'winners' ? 'Losers' : 'Winners'}</span>
@@ -427,6 +440,7 @@ export const OpenPlayQueueBoard: React.FC<OpenPlayQueueBoardProps> = ({
                 type="button"
                 onClick={() => setShowRuleInfo(false)}
                 className="text-emerald-700 hover:text-emerald-900 cursor-pointer"
+                aria-label="Close rule info"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -684,6 +698,7 @@ export const OpenPlayQueueBoard: React.FC<OpenPlayQueueBoardProps> = ({
                 type="button"
                 onClick={() => setShowBulkModal(false)}
                 className="p-1 rounded-lg text-slate-400 hover:text-slate-700"
+                aria-label="Close bulk add modal"
               >
                 <X className="w-4 h-4" />
               </button>

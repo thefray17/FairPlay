@@ -122,6 +122,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                       onClick={() => setRoundToDelete(round.roundNumber)}
                       className="text-slate-400 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded-lg text-[10px] sm:text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
                       title={`Delete Round ${round.roundNumber} and all its matches`}
+                      aria-label={`Delete Round ${round.roundNumber}`}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                       <span className="hidden sm:inline">Delete Round</span>
@@ -183,6 +184,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                                     type="button"
                                     onClick={() => setTempScore1((s) => Math.max(0, s - 1))}
                                     className="w-6 h-6 rounded-md bg-white hover:bg-slate-200 text-slate-700 font-black text-xs flex items-center justify-center cursor-pointer shadow-2xs"
+                                    aria-label="Decrease Team 1 score"
                                   >
                                     -
                                   </button>
@@ -199,6 +201,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                                     type="button"
                                     onClick={() => setTempScore1((s) => s + 1)}
                                     className="w-6 h-6 rounded-md bg-white hover:bg-slate-200 text-slate-700 font-black text-xs flex items-center justify-center cursor-pointer shadow-2xs"
+                                    aria-label="Increase Team 1 score"
                                   >
                                     +
                                   </button>
@@ -209,6 +212,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                                     type="button"
                                     onClick={() => setTempScore2((s) => Math.max(0, s - 1))}
                                     className="w-6 h-6 rounded-md bg-white hover:bg-slate-200 text-slate-700 font-black text-xs flex items-center justify-center cursor-pointer shadow-2xs"
+                                    aria-label="Decrease Team 2 score"
                                   >
                                     -
                                   </button>
@@ -225,6 +229,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                                     type="button"
                                     onClick={() => setTempScore2((s) => s + 1)}
                                     className="w-6 h-6 rounded-md bg-white hover:bg-slate-200 text-slate-700 font-black text-xs flex items-center justify-center cursor-pointer shadow-2xs"
+                                    aria-label="Increase Team 2 score"
                                   >
                                     +
                                   </button>
@@ -240,6 +245,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                                   type="button"
                                   onClick={cancelEdit}
                                   className="p-1 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 cursor-pointer"
+                                  aria-label="Cancel edit"
                                 >
                                   <X className="w-3 h-3" />
                                 </button>
@@ -275,6 +281,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                             onClick={() => startEdit(match.id, match.score1, match.score2)}
                             className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
                             title="Edit match score"
+                            aria-label="Edit match score"
                           >
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
@@ -286,6 +293,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                             onClick={() => setMatchToDelete({ match, roundNumber: round.roundNumber })}
                             className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                             title="Delete this match from history"
+                            aria-label="Delete this match from history"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>

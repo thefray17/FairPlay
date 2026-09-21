@@ -1,6 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import App from './App';
-import { OpenPlayPage } from './components/openplay/OpenPlayPage';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { Player } from './types';
 import { INITIAL_PLAYERS } from './utils/sampleData';
 import { SOCIAL_STORAGE_KEYS, emitRosterSync } from './utils/playerSync';
@@ -8,10 +6,18 @@ import { OPENPLAY_STORAGE_KEYS } from './utils/openPlay';
 import {
   extractSessionId,
   sanitizeSessionCode,
+  generateSessionId,
+  generateOrganizerToken,
+  setOrganizerToken,
   loadAndApplySession,
   SESSION_LOADED_EVENT,
   SessionData,
 } from './utils/sessionSync';
+
+const App = lazy(() => import('./App'));
+const OpenPlayPage = lazy(() =>
+  import('./components/openplay/OpenPlayPage').then((m) => ({ default: m.OpenPlayPage }))
+);
 
 export function Root() {
   const [currentPath, setCurrentPath] = useState<string>(() => {
@@ -76,9 +82,15 @@ export function Root() {
         if (extracted) return extracted;
       }
       const saved = localStorage.getItem('fairclub_session_id_v1');
-      if (saved && saved.trim()) return sanitizeSessionCode(saved);
+      if (saved && saved.trim()) {
+        const clean = sanitizeSessionCode(saved);
+        if (clean) return clean;
+      }
     } catch {}
-    return '7429';
+    const newId = generateSessionId();
+    const token = generateOrganizerToken();
+    setOrganizerToken(newId, token);
+    return newId;
   });
 
   // Auto-fetch if opened with a session link or QR code from another device
@@ -239,8 +251,23 @@ export function Root() {
   const isOpenPlay = currentPath.toLowerCase().startsWith('/openplay');
 
   return (
-    <>
-      <div className={isOpenPlay ? 'hidden' : 'block min-h-screen'}>
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-center text-white">
+          <div className="w-10 h-10 border-3 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4" />
+          <p className="text-slate-400 font-medium text-sm">Loading court view...</p>
+        </div>
+      }
+    >
+      {isOpenPlay ? (
+        <OpenPlayPage
+          onNavigateToSocial={() => navigateTo('/')}
+          socialPlayers={openPlayPlayers}
+          setSocialPlayers={setOpenPlayPlayers}
+          onPullFromSocial={handleOverwriteOpenPlayWithSocial}
+          sessionId={sessionId}
+        />
+      ) : (
         <App
           onNavigateToOpenPlay={() => navigateTo('/openplay')}
           players={socialPlayers}
@@ -249,16 +276,7 @@ export function Root() {
           sessionId={sessionId}
           setSessionId={setSessionId}
         />
-      </div>
-      <div className={isOpenPlay ? 'block min-h-screen' : 'hidden'}>
-        <OpenPlayPage
-          onNavigateToSocial={() => navigateTo('/')}
-          socialPlayers={openPlayPlayers}
-          setSocialPlayers={setOpenPlayPlayers}
-          onPullFromSocial={handleOverwriteOpenPlayWithSocial}
-          sessionId={sessionId}
-        />
-      </div>
-    </>
+      )}
+    </Suspense>
   );
 }

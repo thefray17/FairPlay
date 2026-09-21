@@ -9,16 +9,21 @@ import {
   Smartphone,
   RefreshCw,
   ArrowRight,
-  ShieldCheck,
   AlertCircle,
   Zap,
   Camera,
   Keyboard,
+  Eye,
+  KeyRound,
+  Users,
+  Lock,
 } from 'lucide-react';
 import {
   extractSessionId,
   sanitizeSessionCode,
   buildSessionShareUrl,
+  getOrganizerToken,
+  isSessionOrganizer,
 } from '../utils/sessionSync';
 import { soundFx } from '../utils/audio';
 import { QRCameraScanner } from './QRCameraScanner';
@@ -49,19 +54,26 @@ export const TransferSessionModal: React.FC<TransferSessionModalProps> = ({
   playersCount,
   roundsCount,
 }) => {
-  const [copiedId, setCopiedId] = useState(false);
-  const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedJoinCode, setCopiedJoinCode] = useState(false);
+  const [copiedViewLink, setCopiedViewLink] = useState(false);
+  const [copiedEditLink, setCopiedEditLink] = useState(false);
   const [inputSession, setInputSession] = useState('');
   const [loadLoading, setLoadLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadSuccess, setLoadSuccess] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'share' | 'load'>('share');
+  const [shareAccessMode, setShareAccessMode] = useState<'join_code' | 'edit_access'>('join_code');
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [confirmNewSession, setConfirmNewSession] = useState(false);
   const [showCameraScanner, setShowCameraScanner] = useState(false);
 
-  const cleanSessionId = sanitizeSessionCode(currentSessionId) || currentSessionId || '7429';
-  const shareUrl = buildSessionShareUrl(cleanSessionId);
+  const cleanSessionId = sanitizeSessionCode(currentSessionId) || currentSessionId || '';
+  const hasOrganizerAccess = isSessionOrganizer(cleanSessionId);
+  const isEditMode = shareAccessMode === 'edit_access';
+
+  const joinUrl = buildSessionShareUrl(cleanSessionId);
+  const editUrl = buildSessionShareUrl(cleanSessionId, { editAccess: true });
+  const activeShareUrl = isEditMode && hasOrganizerAccess ? editUrl : joinUrl;
 
   // Reset camera scanner and temporary alerts when modal is closed
   useEffect(() => {
@@ -73,62 +85,93 @@ export const TransferSessionModal: React.FC<TransferSessionModalProps> = ({
     }
   }, [isOpen]);
 
-  // Generate QR code for the share link
+  // Generate QR code for the active share link
   useEffect(() => {
-    if (!isOpen || !shareUrl) return;
-    QRCode.toDataURL(shareUrl, {
+    if (!isOpen || !activeShareUrl) return;
+    const isEditQr = isEditMode && hasOrganizerAccess;
+    QRCode.toDataURL(activeShareUrl, {
       width: 260,
       margin: 2,
       color: {
-        dark: '#1e1b4b', // Deep indigo
+        dark: isEditQr ? '#7c2d12' : '#1e1b4b', // Amber/rust for admin, deep indigo for spectator
         light: '#ffffff',
       },
     })
       .then((url) => setQrDataUrl(url))
       .catch((err) => console.error('QR code generation error:', err));
-  }, [isOpen, shareUrl]);
+  }, [isOpen, activeShareUrl, isEditMode, hasOrganizerAccess]);
 
   if (!isOpen) return null;
 
-  const handleCopyId = async () => {
+  const handleCopyJoinCode = async () => {
     try {
       await navigator.clipboard.writeText(cleanSessionId);
-      setCopiedId(true);
+      setCopiedJoinCode(true);
       soundFx.playPointChime();
-      setTimeout(() => setCopiedId(false), 2500);
+      setTimeout(() => setCopiedJoinCode(false), 2500);
     } catch {
-      setCopiedId(true);
-      setTimeout(() => setCopiedId(false), 2500);
+      setCopiedJoinCode(true);
+      setTimeout(() => setCopiedJoinCode(false), 2500);
     }
   };
 
-  const handleCopyLink = async () => {
+  const handleCopyViewLink = async () => {
     try {
-      await navigator.clipboard.writeText(shareUrl);
-      setCopiedLink(true);
+      await navigator.clipboard.writeText(joinUrl);
+      setCopiedViewLink(true);
       soundFx.playPointChime();
-      setTimeout(() => setCopiedLink(false), 2500);
+      setTimeout(() => setCopiedViewLink(false), 2500);
     } catch {
-      setCopiedLink(true);
-      setTimeout(() => setCopiedLink(false), 2500);
+      setCopiedViewLink(true);
+      setTimeout(() => setCopiedViewLink(false), 2500);
     }
   };
 
-  const handleNativeShare = async () => {
+  const handleCopyEditLink = async () => {
+    try {
+      await navigator.clipboard.writeText(editUrl);
+      setCopiedEditLink(true);
+      soundFx.playPointChime();
+      setTimeout(() => setCopiedEditLink(false), 2500);
+    } catch {
+      setCopiedEditLink(true);
+      setTimeout(() => setCopiedEditLink(false), 2500);
+    }
+  };
+
+  const handleShareJoinCode = async () => {
     if (navigator.share) {
       try {
         await navigator.share({
-          title: `FairPlay Match Session (${currentSessionId})`,
-          text: `Join and continue our badminton match session on your phone: ${currentSessionId}`,
-          url: shareUrl,
+          title: `FairPlay Join Code: ${cleanSessionId}`,
+          text: `Join session ${cleanSessionId} on FairPlay to view live courts and match scores:`,
+          url: joinUrl,
         });
       } catch (err: any) {
         if (err.name !== 'AbortError') {
-          handleCopyLink();
+          handleCopyViewLink();
         }
       }
     } else {
-      handleCopyLink();
+      handleCopyViewLink();
+    }
+  };
+
+  const handleShareEditAccess = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `FairPlay Organizer Edit Access (${cleanSessionId})`,
+          text: `Administrative organizer edit access link for FairPlay session ${cleanSessionId}:`,
+          url: editUrl,
+        });
+      } catch (err: any) {
+        if (err.name !== 'AbortError') {
+          handleCopyEditLink();
+        }
+      }
+    } else {
+      handleCopyEditLink();
     }
   };
 
@@ -258,7 +301,7 @@ export const TransferSessionModal: React.FC<TransferSessionModalProps> = ({
                     </span>
                     <HelpTip title="Session Data Scope">
                       <p>
-                        This session code synchronizes all active courts, matches, scores, and Open Play bucket queues in real-time.
+                        This 4-digit code identifies the tournament session across all devices.
                       </p>
                     </HelpTip>
                   </div>
@@ -273,6 +316,7 @@ export const TransferSessionModal: React.FC<TransferSessionModalProps> = ({
                       disabled={isSyncing}
                       className="p-1 rounded-lg bg-indigo-100 hover:bg-indigo-200 text-indigo-800 transition-colors cursor-pointer"
                       title="Force cloud sync"
+                      aria-label="Force cloud sync"
                     >
                       <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
                     </button>
@@ -285,10 +329,11 @@ export const TransferSessionModal: React.FC<TransferSessionModalProps> = ({
                   </div>
                   <button
                     type="button"
-                    onClick={handleCopyId}
+                    onClick={handleCopyJoinCode}
+                    aria-label="Copy 4-digit join code"
                     className="inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-[10px] sm:text-xs uppercase tracking-wider transition-all shadow-sm active:scale-95 cursor-pointer shrink-0"
                   >
-                    {copiedId ? (
+                    {copiedJoinCode ? (
                       <>
                         <Check className="w-4 h-4 text-emerald-300" />
                         <span>Copied!</span>
@@ -304,94 +349,285 @@ export const TransferSessionModal: React.FC<TransferSessionModalProps> = ({
 
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 mt-2.5 text-[11px] text-slate-500">
                   <span>Includes: {playersCount} Players • {roundsCount} Social Rounds • Open Play Data</span>
-                  <span className="text-emerald-700 font-bold flex items-center gap-1">
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Ready to transfer
+                  <span className={`font-bold flex items-center gap-1 ${hasOrganizerAccess ? 'text-emerald-700' : 'text-slate-600'}`}>
+                    {hasOrganizerAccess ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Edit Privileges Active</span>
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>Read-Only Viewer</span>
+                      </>
+                    )}
                   </span>
                 </div>
               </div>
 
-              {/* Direct Link & Mobile Share */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-black uppercase tracking-wider text-slate-700 block">
-                    Session Link
-                  </label>
-                  <HelpTip title="Direct Session Link">
-                    <p>
-                      Share this link with another phone. Opening it loads all active matches, standings, and players automatically.
-                    </p>
-                  </HelpTip>
-                </div>
-                <div className="flex items-center gap-1.5 sm:gap-2">
-                  <input
-                    type="text"
-                    readOnly
-                    value={shareUrl}
-                    className="flex-1 min-w-0 bg-slate-50 border border-slate-200 rounded-xl px-2.5 sm:px-3 py-2 sm:py-2.5 text-[10px] sm:text-xs text-slate-700 font-mono select-all focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
-                    onClick={(e) => (e.target as HTMLInputElement).select()}
-                  />
-                  <button
-                    type="button"
-                    onClick={handleCopyLink}
-                    className="px-2.5 sm:px-3.5 py-2 sm:py-2.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-black text-xs transition-colors cursor-pointer shrink-0 flex items-center gap-1.5"
-                    title="Copy full link"
-                  >
-                    {copiedLink ? (
-                      <Check className="w-4 h-4 text-emerald-400" />
-                    ) : (
-                      <Copy className="w-4 h-4" />
-                    )}
-                    <span className="hidden sm:inline">{copiedLink ? 'Copied' : 'Copy'}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleNativeShare}
-                    className="px-3.5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs transition-colors cursor-pointer shrink-0 flex items-center gap-1.5"
-                    title="Share via WhatsApp or Apps"
-                  >
-                    <Share2 className="w-4 h-4" />
-                    <span>Share</span>
-                  </button>
-                </div>
+              {/* Two Distinct Sharing Options: Share join code vs Share edit access */}
+              <div className="bg-slate-100 p-1.5 rounded-2xl flex items-center gap-1 text-xs">
+                <button
+                  type="button"
+                  id="btn-share-mode-join-code"
+                  onClick={() => setShareAccessMode('join_code')}
+                  className={`flex-1 py-2 px-3 rounded-xl font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                    !isEditMode
+                      ? 'bg-white text-indigo-950 shadow-sm border border-slate-200/80 font-black'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Eye className="w-4 h-4 text-indigo-600 shrink-0" />
+                  <span>Share join code</span>
+                  <span className="text-[10px] font-semibold text-slate-500 hidden sm:inline">(View Only)</span>
+                </button>
+                <button
+                  type="button"
+                  id="btn-share-mode-edit-access"
+                  onClick={() => setShareAccessMode('edit_access')}
+                  className={`flex-1 py-2 px-3 rounded-xl font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                    isEditMode
+                      ? 'bg-white text-amber-950 shadow-sm border border-amber-200 font-black'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <KeyRound className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>Share edit access</span>
+                  <span className="text-[10px] font-semibold text-amber-700 hidden sm:inline">(Organizer Key)</span>
+                </button>
               </div>
 
-              {/* QR Code Card */}
-              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row items-center gap-4 text-center sm:text-left">
-                <div className="bg-white p-2.5 rounded-2xl border border-slate-200 shadow-sm shrink-0">
-                  {qrDataUrl ? (
-                    <img
-                      src={qrDataUrl}
-                      alt={`QR Code for Session ${currentSessionId}`}
-                      className="w-32 h-32 sm:w-36 sm:h-36 block"
-                    />
+              {/* OPTION 1: Share Join Code (Public / View-Only) */}
+              {!isEditMode && (
+                <>
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-700 flex items-start gap-2.5">
+                    <Eye className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+                    <div className="space-y-0.5">
+                      <p className="font-bold text-slate-900">Public Join Code &amp; Spectator Link</p>
+                      <p className="text-[11px] text-slate-600 leading-relaxed">
+                        Anyone with the 4-digit code <span className="font-mono font-bold text-indigo-900">{cleanSessionId}</span> or this spectator link can follow live scores, court assignments, and queue standings in real-time. Spectators cannot edit matches or change settings.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Public Viewer Link & Mobile Share */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-black uppercase tracking-wider text-slate-700 block">
+                        Spectator View Link
+                      </label>
+                      <HelpTip title="Spectator View Link">
+                        <p>
+                          Share this read-only link with players and fans so they can watch courts live from their phones.
+                        </p>
+                      </HelpTip>
+                    </div>
+                    <div className="flex items-center gap-1.5 sm:gap-2">
+                      <input
+                        type="text"
+                        readOnly
+                        value={joinUrl}
+                        className="flex-1 min-w-0 bg-slate-50 border border-slate-200 rounded-xl px-2.5 sm:px-3 py-2 sm:py-2.5 text-[10px] sm:text-xs text-slate-700 font-mono select-all focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                        onClick={(e) => (e.target as HTMLInputElement).select()}
+                      />
+                      <button
+                        type="button"
+                        id="btn-copy-join-code-link"
+                        onClick={handleCopyViewLink}
+                        aria-label="Copy spectator view link"
+                        className="px-2.5 sm:px-3.5 py-2 sm:py-2.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-black text-xs transition-colors cursor-pointer shrink-0 flex items-center gap-1.5"
+                        title="Copy view link"
+                      >
+                        {copiedViewLink ? (
+                          <Check className="w-4 h-4 text-emerald-400" />
+                        ) : (
+                          <Copy className="w-4 h-4" />
+                        )}
+                        <span className="hidden sm:inline">{copiedViewLink ? 'Copied' : 'Copy Link'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        id="btn-share-join-code"
+                        onClick={handleShareJoinCode}
+                        aria-label="Share join code via mobile"
+                        className="px-3.5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs transition-colors cursor-pointer shrink-0 flex items-center gap-1.5"
+                        title="Share join code"
+                      >
+                        <Share2 className="w-4 h-4" />
+                        <span>Share</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Spectator QR Code Card */}
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row items-center gap-4 text-center sm:text-left">
+                    <div className="bg-white p-2.5 rounded-2xl border border-slate-200 shadow-sm shrink-0">
+                      {qrDataUrl ? (
+                        <img
+                          src={qrDataUrl}
+                          alt={`QR Code for Session ${cleanSessionId}`}
+                          className="w-32 h-32 sm:w-36 sm:h-36 block"
+                        />
+                      ) : (
+                        <div className="w-32 h-32 sm:w-36 sm:h-36 flex items-center justify-center bg-slate-100 rounded-xl">
+                          <QrCode className="w-8 h-8 text-slate-400 animate-pulse" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="space-y-1.5 flex-1">
+                      <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-900">
+                        <Eye className="w-3 h-3 text-indigo-700" />
+                        <span>Public Spectator QR (Read-Only)</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 justify-center sm:justify-start">
+                        <h4 className="text-sm font-black text-slate-900">
+                          Scan to View Live Scoreboard
+                        </h4>
+                        <HelpTip title="How Spectator QR Works">
+                          <ol className="list-decimal list-inside space-y-1 pl-1">
+                            <li>Players point their phone camera at this QR code.</li>
+                            <li>Tap the banner to open FairPlay in view-only mode.</li>
+                            <li>Live court rotations and match results appear instantly.</li>
+                          </ol>
+                        </HelpTip>
+                      </div>
+                      <p className="text-xs text-slate-600 leading-relaxed">
+                        Players and viewers scan this code to follow live court assignments and scores without risking accidental edits.
+                      </p>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* OPTION 2: Share Edit Access (Organizer / Administrative Write Key) */}
+              {isEditMode && (
+                <>
+                  {hasOrganizerAccess ? (
+                    <>
+                      {/* Organizer Notice */}
+                      <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-xs text-amber-900 flex items-start gap-2.5">
+                        <KeyRound className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                        <div className="space-y-0.5">
+                          <p className="font-bold text-amber-950">Administrative Organizer Edit Access</p>
+                          <p className="text-[11px] text-amber-800 leading-relaxed">
+                            This link embeds your private organizer passkey. Anyone who scans or opens this link gains full permissions to record scores, pause court timers, adjust lineups, and modify session rules. Only share with your trusted court director.
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Edit Access Link & Mobile Share */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-black uppercase tracking-wider text-amber-900 block">
+                            Organizer Edit Link (Passkey Embedded)
+                          </label>
+                          <HelpTip title="Edit Link Passkey">
+                            <p>
+                              Contains the secret organizer token in the URL. Devices that load this link automatically receive full edit permissions.
+                            </p>
+                          </HelpTip>
+                        </div>
+                        <div className="flex items-center gap-1.5 sm:gap-2">
+                          <input
+                            type="text"
+                            readOnly
+                            value={editUrl}
+                            className="flex-1 min-w-0 bg-amber-50/70 border border-amber-300 rounded-xl px-2.5 sm:px-3 py-2 sm:py-2.5 text-[10px] sm:text-xs text-amber-950 font-mono select-all focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                            onClick={(e) => (e.target as HTMLInputElement).select()}
+                          />
+                          <button
+                            type="button"
+                            id="btn-copy-edit-link"
+                            onClick={handleCopyEditLink}
+                            aria-label="Copy organizer edit link"
+                            className="px-2.5 sm:px-3.5 py-2 sm:py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-black text-xs transition-colors cursor-pointer shrink-0 flex items-center gap-1.5"
+                            title="Copy edit link"
+                          >
+                            {copiedEditLink ? (
+                              <Check className="w-4 h-4 text-emerald-300" />
+                            ) : (
+                              <KeyRound className="w-4 h-4" />
+                            )}
+                            <span className="hidden sm:inline">{copiedEditLink ? 'Copied' : 'Copy Edit Link'}</span>
+                          </button>
+                          <button
+                            type="button"
+                            id="btn-share-edit-access"
+                            onClick={handleShareEditAccess}
+                            aria-label="Share edit access via mobile"
+                            className="px-3.5 py-2.5 rounded-xl bg-amber-700 hover:bg-amber-800 text-white font-black text-xs transition-colors cursor-pointer shrink-0 flex items-center gap-1.5"
+                            title="Share edit access"
+                          >
+                            <Share2 className="w-4 h-4" />
+                            <span>Share</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Organizer QR Code Card */}
+                      <div className="bg-amber-50/50 border border-amber-200 rounded-2xl p-4 flex flex-col sm:flex-row items-center gap-4 text-center sm:text-left">
+                        <div className="bg-white p-2.5 rounded-2xl border border-amber-300 shadow-sm shrink-0">
+                          {qrDataUrl ? (
+                            <img
+                              src={qrDataUrl}
+                              alt={`Organizer QR Code for Session ${cleanSessionId}`}
+                              className="w-32 h-32 sm:w-36 sm:h-36 block"
+                            />
+                          ) : (
+                            <div className="w-32 h-32 sm:w-36 sm:h-36 flex items-center justify-center bg-amber-50 rounded-xl">
+                              <QrCode className="w-8 h-8 text-amber-500 animate-pulse" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="space-y-1.5 flex-1">
+                          <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-200">
+                            <KeyRound className="w-3 h-3 text-amber-700" />
+                            <span>Organizer Edit Access QR</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 justify-center sm:justify-start">
+                            <h4 className="text-sm font-black text-slate-900">
+                              Scan to Transfer Full Edit Controls
+                            </h4>
+                            <HelpTip title="Co-Organizer QR Handover">
+                              <ol className="list-decimal list-inside space-y-1 pl-1">
+                                <li>Open camera on the co-organizer's phone.</li>
+                                <li>Scan this QR code and tap the link banner.</li>
+                                <li>The other phone is instantly authorized to edit scores and court lineups.</li>
+                              </ol>
+                            </HelpTip>
+                          </div>
+                          <p className="text-xs text-amber-900/80 leading-relaxed">
+                            Point co-organizer camera at this code to transfer full match controls and editing permissions to their device.
+                          </p>
+                        </div>
+                      </div>
+                    </>
                   ) : (
-                    <div className="w-32 h-32 sm:w-36 sm:h-36 flex items-center justify-center bg-slate-100 rounded-xl">
-                      <QrCode className="w-8 h-8 text-slate-400 animate-pulse" />
+                    /* Device is currently in read-only mode */
+                    <div className="bg-slate-50 border-2 border-dashed border-slate-300 rounded-2xl p-5 text-center sm:text-left space-y-3">
+                      <div className="flex flex-col sm:flex-row items-center gap-3">
+                        <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0">
+                          <Lock className="w-5 h-5" />
+                        </div>
+                        <div className="space-y-0.5">
+                          <h4 className="text-sm font-black text-slate-900">
+                            Read-Only Session on this Device
+                          </h4>
+                          <p className="text-xs text-slate-600 leading-relaxed">
+                            You joined session <span className="font-mono font-bold text-slate-900">{cleanSessionId}</span> using a public join code or spectator link. Because this device does not possess an organizer passkey, you cannot record match results or share edit access with others.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="bg-white p-3 rounded-xl border border-slate-200 text-xs text-slate-700 space-y-1">
+                        <p className="font-bold text-slate-800">Need to make edits on this device?</p>
+                        <p className="text-[11px] text-slate-600">
+                          Ask the session organizer to open <span className="font-semibold text-slate-800">Transfer &gt; Share edit access</span> on their phone and share their Edit Link or let you scan their Organizer QR code.
+                        </p>
+                      </div>
                     </div>
                   )}
-                </div>
-                <div className="space-y-1.5 flex-1">
-                  <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-yellow-100 text-yellow-900 text-[10px] font-black uppercase tracking-wider">
-                    <Zap className="w-3 h-3 text-yellow-700" />
-                    Instant Camera Scan
-                  </div>
-                  <div className="flex items-center gap-1.5 justify-center sm:justify-start">
-                    <h4 className="text-sm font-black text-slate-900">
-                      Scan with Phone Camera
-                    </h4>
-                    <HelpTip title="How Transfer Works">
-                      <ol className="list-decimal list-inside space-y-1 pl-1">
-                        <li>Point another phone camera at this QR code.</li>
-                        <li>Tap the link banner that opens FairPlay.</li>
-                        <li>All players and matches load immediately without losing progress.</li>
-                      </ol>
-                    </HelpTip>
-                  </div>
-                  <p className="text-xs text-slate-600 leading-relaxed">
-                    Have someone scan this QR code with their camera to transfer the session immediately.
-                  </p>
-                </div>
-              </div>
+                </>
+              )}
 
               {/* New Session Button */}
               <div className="pt-2 border-t border-slate-100 text-xs text-slate-500">
@@ -507,7 +743,7 @@ export const TransferSessionModal: React.FC<TransferSessionModalProps> = ({
                       </label>
                       <HelpTip title="Session Code Format">
                         <p>
-                          Enter the 4-digit code (e.g. <span className="font-mono font-bold">7429</span>) or paste the full session link.
+                          Enter the 4-digit code (e.g. <span className="font-mono font-bold">4821</span>) or paste the full session link.
                         </p>
                       </HelpTip>
                     </div>
@@ -519,7 +755,7 @@ export const TransferSessionModal: React.FC<TransferSessionModalProps> = ({
                         setLoadError(null);
                         setLoadSuccess(null);
                       }}
-                      placeholder="e.g. 7429 or paste full session link"
+                      placeholder="e.g. 4821 or paste full session link"
                       className="w-full min-w-0 bg-slate-50 border border-slate-300 rounded-xl px-4 py-3 text-base sm:text-lg text-slate-900 font-mono tracking-wider placeholder:font-sans placeholder:tracking-normal placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-600 focus:bg-white"
                       autoFocus
                     />

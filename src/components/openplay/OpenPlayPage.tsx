@@ -41,6 +41,8 @@ import {
   extractSessionId,
   sanitizeSessionCode,
   generateSessionId,
+  generateOrganizerToken,
+  setOrganizerToken,
   applyOpenPlayData,
   emitOpenPlayCloudSynced,
   OpenPlaySessionData,
@@ -48,7 +50,7 @@ import {
   SessionData,
 } from '../../utils/sessionSync';
 import { soundFx } from '../../utils/audio';
-import { ArrowRightLeft, Play, X, Zap } from 'lucide-react';
+import { ArrowRightLeft, Play, X, Zap, Users, AlertCircle } from 'lucide-react';
 
 interface OpenPlayPageProps {
   onNavigateToSocial: () => void;
@@ -80,7 +82,10 @@ export const OpenPlayPage: React.FC<OpenPlayPageProps> = ({
       const saved = localStorage.getItem('fairclub_session_id_v1');
       if (saved && saved.trim()) return sanitizeSessionCode(saved);
     } catch {}
-    return '7429';
+    const newId = generateSessionId();
+    const token = generateOrganizerToken();
+    setOrganizerToken(newId, token);
+    return newId;
   });
 
   const activeSessionId = externalSessionId || internalSessionId;
@@ -424,9 +429,26 @@ export const OpenPlayPage: React.FC<OpenPlayPageProps> = ({
             localStorage.setItem('fairplay_openplay_last_synced', String(now));
           } catch {}
           emitOpenPlayCloudSynced(activeSessionId, now);
+        } else {
+          setNotification({
+            id: Date.now().toString(),
+            type: 'sync_error',
+            timestamp: Date.now(),
+            courtNumber: 0,
+            title: 'Cloud Sync Notice',
+            message: res.error || 'Failed to sync Open Play courts with cloud. All data remains safe locally.',
+          });
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('Failed to auto-sync Open Play to cloud:', err);
+        setNotification({
+          id: Date.now().toString(),
+          type: 'sync_error',
+          timestamp: Date.now(),
+          courtNumber: 0,
+          title: 'Cloud Sync Error',
+          message: err?.message || 'Network error auto-saving Open Play to cloud. Your changes remain saved locally.',
+        });
       } finally {
         setInternalIsSyncing(false);
       }
@@ -484,8 +506,24 @@ export const OpenPlayPage: React.FC<OpenPlayPageProps> = ({
         soundFx.playPointChime();
         return true;
       }
+      setNotification({
+        id: Date.now().toString(),
+        type: 'sync_error',
+        timestamp: Date.now(),
+        courtNumber: 0,
+        title: 'Cloud Sync Notice',
+        message: res.error || 'Failed to sync Open Play courts with cloud server.',
+      });
       return false;
-    } catch (err) {
+    } catch (err: any) {
+      setNotification({
+        id: Date.now().toString(),
+        type: 'sync_error',
+        timestamp: Date.now(),
+        courtNumber: 0,
+        title: 'Network Error',
+        message: err?.message || 'Could not connect to cloud server.',
+      });
       return false;
     } finally {
       setInternalIsSyncing(false);
@@ -529,17 +567,30 @@ export const OpenPlayPage: React.FC<OpenPlayPageProps> = ({
       });
       return { success: true };
     }
+    setNotification({
+      id: Date.now().toString(),
+      type: 'sync_error',
+      timestamp: Date.now(),
+      courtNumber: 0,
+      title: 'Cloud Load Error',
+      message: res.error || 'Failed to load session from cloud.',
+    });
     return { success: false, error: res.error || 'Failed to load session from cloud' };
   };
 
   // Generate a brand new readable session ID
   const handleGenerateNewSession = () => {
     const newId = generateSessionId();
+    const token = generateOrganizerToken();
+    setOrganizerToken(newId, token);
     setInternalSessionId(newId);
     try {
       localStorage.setItem('fairclub_session_id_v1', newId);
       const url = new URL(window.location.href);
       url.searchParams.set('session', newId);
+      url.searchParams.delete('editToken');
+      url.searchParams.delete('token');
+      url.searchParams.delete('key');
       window.history.replaceState({}, '', url.toString());
     } catch {}
     handleManualSync();
@@ -561,6 +612,25 @@ export const OpenPlayPage: React.FC<OpenPlayPageProps> = ({
     const timer = setTimeout(() => setNotification(null), 7000);
     return () => clearTimeout(timer);
   }, [notification]);
+
+  // Listen for global sync errors from sessionSync
+  useEffect(() => {
+    const handleSyncError = (e: Event) => {
+      const ce = e as CustomEvent<{ error: string }>;
+      if (ce.detail?.error) {
+        setNotification({
+          id: Date.now().toString(),
+          type: 'sync_error',
+          timestamp: Date.now(),
+          courtNumber: 0,
+          title: 'Cloud Sync Notice',
+          message: ce.detail.error,
+        });
+      }
+    };
+    window.addEventListener('fairplay:sync-error', handleSyncError);
+    return () => window.removeEventListener('fairplay:sync-error', handleSyncError);
+  }, []);
 
   // Player Registry
   const playerRegistry: Record<string, OpenPlayPlayer> = useMemo(() => {
@@ -1409,20 +1479,61 @@ export const OpenPlayPage: React.FC<OpenPlayPageProps> = ({
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-2.5 sm:py-4 pb-36 sm:pb-40 md:pb-10 overflow-x-hidden">
         {/* Notification Banner */}
         {notification && (
-          <div className="mb-3 p-3 rounded-2xl bg-emerald-950 border border-emerald-700 text-white shadow-sm flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-1 duration-200">
+          <div
+            id="openplay-notification-banner"
+            className={`mb-3 p-3 rounded-2xl border text-white shadow-sm flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-1 duration-200 ${
+              notification.type === 'sync_error'
+                ? 'bg-rose-950 border-rose-800'
+                : 'bg-emerald-950 border-emerald-700'
+            }`}
+          >
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-7 h-7 rounded-lg bg-yellow-400 text-emerald-950 flex items-center justify-center font-black shrink-0">
-                <Zap className="w-4 h-4 fill-emerald-950" />
+              <div
+                className={`w-7 h-7 rounded-lg flex items-center justify-center font-black shrink-0 ${
+                  notification.type === 'sync_error'
+                    ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                    : 'bg-yellow-400 text-emerald-950'
+                }`}
+              >
+                {notification.type === 'sync_error' ? (
+                  <AlertCircle className="w-4 h-4 text-rose-400" />
+                ) : (
+                  <Zap className="w-4 h-4 fill-emerald-950" />
+                )}
               </div>
               <div className="min-w-0">
-                <h4 className="text-xs font-black text-yellow-300">{notification.title}</h4>
-                <p className="text-xs text-emerald-100/90 truncate">{notification.message}</p>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <h4
+                    className={`text-xs font-black ${
+                      notification.type === 'sync_error' ? 'text-rose-200' : 'text-yellow-300'
+                    }`}
+                  >
+                    {notification.title}
+                  </h4>
+                  {notification.type === 'sync_error' && (
+                    <span className="text-[9px] uppercase font-black px-1.5 py-0.2 rounded-sm bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                      Offline Resilient
+                    </span>
+                  )}
+                </div>
+                <p
+                  className={`text-xs mt-0.5 ${
+                    notification.type === 'sync_error' ? 'text-rose-200/90 leading-relaxed' : 'text-emerald-100/90 truncate'
+                  }`}
+                >
+                  {notification.message}
+                </p>
               </div>
             </div>
             <button
               type="button"
               onClick={() => setNotification(null)}
-              className="p-1 rounded-lg text-emerald-300 hover:text-white hover:bg-white/10 transition-colors"
+              className={`p-1 rounded-lg transition-colors cursor-pointer ${
+                notification.type === 'sync_error'
+                  ? 'text-rose-300 hover:text-white hover:bg-rose-900'
+                  : 'text-emerald-300 hover:text-white hover:bg-white/10'
+              }`}
+              aria-label="Dismiss notification"
             >
               <X className="w-4 h-4" />
             </button>
@@ -1470,6 +1581,7 @@ export const OpenPlayPage: React.FC<OpenPlayPageProps> = ({
                     onClick={handleDispatchAll}
                     className="inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-xl font-black text-xs bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs active:scale-95 transition-all cursor-pointer shrink-0"
                     title="Fill all available courts"
+                    aria-label="Fill all available courts"
                   >
                     <Play className="w-3.5 h-3.5 fill-white" />
                     <span className="hidden sm:inline">Fill Courts</span>
@@ -1477,6 +1589,41 @@ export const OpenPlayPage: React.FC<OpenPlayPageProps> = ({
                   </button>
                 )}
               </div>
+
+              {/* Empty Players State */}
+              {(socialPlayers || []).length === 0 && (
+                <div id="openplay-no-players" className="bg-white border-2 border-dashed border-emerald-200 rounded-3xl p-6 sm:p-8 text-center space-y-3 shadow-xs">
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto">
+                    <Users className="w-6 h-6" />
+                  </div>
+                  <div className="space-y-1">
+                    <h3 className="text-base font-black text-slate-900">No Players in Open Play</h3>
+                    <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
+                      Add players directly to your squad roster or pull registered players from Social Matches to begin queuing for courts.
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-center gap-2 pt-1 flex-wrap">
+                    <button
+                      type="button"
+                      id="btn-openplay-empty-add-players"
+                      onClick={() => setCurrentTab('squad')}
+                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider cursor-pointer shadow-sm"
+                    >
+                      Add Players
+                    </button>
+                    {onPullFromSocial && (
+                      <button
+                        type="button"
+                        id="btn-openplay-empty-pull-social"
+                        onClick={handlePullFromSocialWrapper}
+                        className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs uppercase tracking-wider cursor-pointer"
+                      >
+                        Import from Social
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Courts Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

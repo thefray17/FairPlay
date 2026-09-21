@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { getAuth, signInAnonymously, User } from 'firebase/auth';
 import {
   getFirestore,
   doc,
@@ -26,8 +26,30 @@ export const firebaseConfig = {
 // Singleton initialization
 export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-// Auth instance for future accounts/profiles
+// Auth instance for accounts/profiles and device session ownership
 export const auth = getAuth(app);
+
+// Anonymous auth helper to authenticate client device without requiring intrusive signup
+let authInitPromise: Promise<User | null> | null = null;
+export async function ensureFirebaseAuth(): Promise<User | null> {
+  if (typeof window === 'undefined') return null;
+  if (auth.currentUser) return auth.currentUser;
+
+  if (!authInitPromise) {
+    authInitPromise = signInAnonymously(auth)
+      .then((cred) => cred.user)
+      .catch((err) => {
+        console.warn('Anonymous Firebase auth notice:', err);
+        return auth.currentUser || null;
+      });
+  }
+  return authInitPromise;
+}
+
+// Auto-initialize anonymous auth on browser load
+if (typeof window !== 'undefined') {
+  ensureFirebaseAuth().catch(() => {});
+}
 
 // Firestore instance targeting provisioned database
 export const db = rawConfig.firestoreDatabaseId
@@ -62,32 +84,101 @@ export interface UserProfile {
   updatedAt?: number;
 }
 
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  };
+}
+
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
+  const err = error as { code?: string; message?: string };
+  const authUser = auth.currentUser;
+  const errorInfo: FirestoreErrorInfo = {
+    error: err?.message || String(error),
+    operationType,
+    path,
+    authInfo: {
+      userId: authUser?.uid || null,
+      email: authUser?.email || null,
+      emailVerified: authUser?.emailVerified || null,
+      isAnonymous: authUser?.isAnonymous || null,
+      tenantId: authUser?.tenantId || null,
+      providerInfo: authUser?.providerData?.map((p) => ({
+        providerId: p.providerId,
+        email: p.email,
+      })) || [],
+    },
+  };
+  throw new Error(JSON.stringify(errorInfo));
+}
+
+function cleanFirestoreData<T extends Record<string, any>>(obj: T): T {
+  const result: Record<string, any> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      result[key] = value;
+    }
+  }
+  return result as T;
+}
+
 /**
- * Save or update session in Firestore
+ * Save or update session in Firestore with strict ownership and write token verification
  */
 export async function saveSessionToFirestore(
   sessionId: string,
-  data: Partial<SessionData>
+  data: Partial<SessionData>,
+  organizerToken?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const cleanId = sessionId.trim().toUpperCase();
     if (!cleanId) return { success: false, error: 'Invalid session ID' };
 
+    if (!organizerToken) {
+      return { success: false, error: 'Write denied: missing organizer token for Firestore save' };
+    }
+
+    // Authenticate device anonymously to satisfy request.auth if supported
+    const user = await ensureFirebaseAuth();
     const sessionRef = doc(db, 'sessions', cleanId);
-    await setDoc(
-      sessionRef,
-      {
-        ...data,
-        id: cleanId,
-        updatedAt: Date.now(),
-        serverTimestamp: serverTimestamp(),
-      },
-      { merge: true }
-    );
+
+    const rawPayload: Record<string, any> = {
+      ...data,
+      id: cleanId,
+      updatedAt: Date.now(),
+      organizerToken,
+    };
+
+    if (user?.uid && !rawPayload.ownerUid) {
+      rawPayload.ownerUid = user.uid;
+    }
+
+    const payload = cleanFirestoreData(rawPayload);
+    await setDoc(sessionRef, payload, { merge: true });
 
     return { success: true };
   } catch (err: any) {
-    console.error('Firestore saveSession error:', err);
+    console.warn('Firestore saveSession note:', err?.message || err);
     return { success: false, error: err?.message || 'Failed to save session to Firestore' };
   }
 }

@@ -1,26 +1,68 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Sessions: allow reading and writing by session code (e.g. 7429, BDM-7429)
-    // Enables multi-device QR transfer and real-time syncing for badminton clubs
-    match /sessions/{sessionId} {
-      allow read: if true;
-      allow write: if request.resource.data.id is string
-                   && request.resource.data.id.size() > 0
-                   && request.resource.data.id.size() <= 64;
+
+    // Helper to validate allowed top-level keys, field types, and sizes for session documents
+    function isValidSessionWrite() {
+      let data = request.resource.data;
+      return data.keys().hasOnly([
+        'id', 'config', 'players', 'rounds', 'upcomingMatches',
+        'openPlay', 'ownerUid', 'organizerToken', 'updatedAt', 'createdAt', 'deviceOrigin'
+      ])
+      && data.id is string
+      && data.id.size() > 0
+      && data.id.size() <= 64
+      && data.organizerToken is string
+      && data.organizerToken.size() > 0
+      && data.organizerToken.size() <= 128
+      && (!('updatedAt' in data) || data.updatedAt is number)
+      && (!('createdAt' in data) || data.createdAt is number)
+      && (!('config' in data) || data.config is map)
+      && (!('players' in data) || data.players is list)
+      && (!('rounds' in data) || data.rounds is list)
+      && (!('upcomingMatches' in data) || data.upcomingMatches is list)
+      && (!('openPlay' in data) || data.openPlay is map)
+      && (!('ownerUid' in data) || (data.ownerUid is string && data.ownerUid.size() <= 128))
+      && (!('deviceOrigin' in data) || (data.deviceOrigin is string && data.deviceOrigin.size() <= 256));
     }
 
-    // User accounts and profiles (foundation for organizer/player authentication)
-    match /users/{userId} {
+    // Sessions: Publicly readable for spectators/players with code; strictly protected writes
+    match /sessions/{sessionId} {
+      // Reads stay open so players can view a session by PIN without logging in
       allow read: if true;
+
+      // Writes that CREATE a new session document (resource == null)
+      allow create: if isValidSessionWrite()
+                    && request.resource.data.organizerToken is string
+                    && request.resource.data.organizerToken.size() > 0;
+
+      // Writes to an EXISTING session document are only allowed if organizerToken matches the stored token
+      allow update: if isValidSessionWrite()
+                    && resource.data.organizerToken != null
+                    && request.resource.data.organizerToken == resource.data.organizerToken;
+
+      // Deletions: authenticated owner only
+      allow delete: if request.auth != null && resource.data.ownerUid == request.auth.uid;
+    }
+
+    // User accounts & organizer profiles:
+    // Scoped to authenticated users for now. Once real account auth ships,
+    // this should be scoped further to request.auth.uid == userId / profile ownership.
+    match /users/{userId} {
+      allow read: if request.auth != null;
       allow write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Player profiles across sessions
+    // Player profiles across sessions:
+    // Scoped to authenticated users for now. Once real account auth ships,
+    // this should be scoped further to request.auth.uid == userId / profile ownership.
     match /playerProfiles/{profileId} {
-      allow read: if true;
+      allow read: if request.auth != null;
       allow write: if request.resource.data.name is string
-                   && request.resource.data.name.size() > 0;
+                   && request.resource.data.name.size() > 0
+                   && request.resource.data.name.size() <= 64;
     }
   }
 }
+
+

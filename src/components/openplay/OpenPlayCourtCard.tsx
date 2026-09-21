@@ -302,6 +302,7 @@ export const OpenPlayCourtCard: React.FC<OpenPlayCourtCardProps> = ({
                     : 'bg-slate-200 hover:bg-slate-300 text-slate-800'
                 }`}
                 title="Shuffle / swap partner combinations"
+                aria-label="Shuffle / swap partner combinations"
               >
                 <ArrowRightLeft className="w-3.5 h-3.5" />
               </button>
@@ -318,6 +319,7 @@ export const OpenPlayCourtCard: React.FC<OpenPlayCourtCardProps> = ({
                     : 'bg-slate-200 hover:bg-slate-300 text-slate-800'
                 }`}
                 title="Edit players on this court"
+                aria-label="Edit players on this court"
               >
                 <Edit3 className="w-3.5 h-3.5" />
               </button>
@@ -421,6 +423,7 @@ export const OpenPlayCourtCard: React.FC<OpenPlayCourtCardProps> = ({
                       onClick={() => handleScoreChange(1, -1)}
                       className="flex-1 h-8 sm:h-9 py-1 px-1.5 rounded-lg sm:rounded-xl bg-slate-100 hover:bg-slate-200 active:scale-95 active:bg-slate-300 text-slate-800 font-bold text-xs flex items-center justify-center transition-all cursor-pointer shadow-2xs"
                       title="Minus 1 point"
+                      aria-label="Minus 1 point Team 1"
                     >
                       <Minus className="w-3.5 h-3.5" />
                     </button>
@@ -511,6 +514,7 @@ export const OpenPlayCourtCard: React.FC<OpenPlayCourtCardProps> = ({
                       onClick={() => handleScoreChange(2, -1)}
                       className="flex-1 h-8 sm:h-9 py-1 px-1.5 rounded-lg sm:rounded-xl bg-slate-100 hover:bg-slate-200 active:scale-95 active:bg-slate-300 text-slate-800 font-bold text-xs flex items-center justify-center transition-all cursor-pointer shadow-2xs"
                       title="Minus 1 point"
+                      aria-label="Minus 1 point Team 2"
                     >
                       <Minus className="w-3.5 h-3.5" />
                     </button>
@@ -612,6 +616,7 @@ export const OpenPlayCourtCard: React.FC<OpenPlayCourtCardProps> = ({
                   onClick={() => setConfirmCancel(true)}
                   className="py-2 px-2.5 rounded-xl border border-black/20 hover:bg-black/10 text-slate-800 font-bold text-xs transition-colors cursor-pointer"
                   title="Cancel match & return players to queues"
+                  aria-label="Cancel match & return players to queues"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                 </button>

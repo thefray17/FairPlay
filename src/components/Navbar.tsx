@@ -12,9 +12,12 @@ import {
   Smartphone,
   Share2,
   Flame,
+  Swords,
+  Layers,
 } from 'lucide-react';
+import { PWAInstallButton } from './common/PWAInstallButton';
 
-export type TabType = 'active' | 'standings' | 'history' | 'players';
+export type TabType = 'active' | 'standings' | 'groups' | 'bracket' | 'history' | 'players';
 
 interface NavbarProps {
   currentTab: TabType;
@@ -29,6 +32,8 @@ interface NavbarProps {
   onOpenTransfer: () => void;
   isSyncing?: boolean;
   onNavigateToOpenPlay?: () => void;
+  hasActiveBracket?: boolean;
+  hasActiveGroupStage?: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -44,6 +49,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenTransfer,
   isSyncing,
   onNavigateToOpenPlay,
+  hasActiveBracket,
+  hasActiveGroupStage,
 }) => {
   return (
     <header className="sticky top-0 z-30 bg-indigo-600 text-white shadow-md">
@@ -79,11 +86,15 @@ export const Navbar: React.FC<NavbarProps> = ({
                 onClick={onNavigateToOpenPlay}
                 className="inline-flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-emerald-950 font-black text-xs transition-all shadow-sm active:scale-95 cursor-pointer shrink-0"
                 title="Switch to Open Play FIFO Queue Mode"
+                aria-label="Switch to Open Play FIFO Queue Mode"
               >
                 <Flame className="w-3.5 h-3.5 fill-emerald-950 text-emerald-950 shrink-0" />
                 <span className="hidden sm:inline">Open Play</span>
               </button>
             )}
+
+            {/* PWA Install Button (auto-hides when standalone or unpromptable) */}
+            <PWAInstallButton variant="navbar" />
 
             {/* Session ID & Transfer Handover Button */}
             <button
@@ -92,6 +103,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               onClick={onOpenTransfer}
               className="inline-flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-xl bg-yellow-400 hover:bg-yellow-300 text-indigo-950 font-black text-xs transition-all shadow-sm active:scale-95 cursor-pointer shrink-0"
               title="Transfer Session to another phone or sync matches"
+              aria-label="Transfer Session to another phone or sync matches"
             >
               <Smartphone className="w-3.5 h-3.5 text-indigo-950 shrink-0" />
               <span className="font-mono font-black text-[11px] sm:text-xs tracking-wider">{sessionId}</span>
@@ -143,6 +155,44 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           <button
             type="button"
+            id="tab-groups"
+            onClick={() => onTabChange('groups')}
+            className={`flex items-center gap-2 py-1.5 transition-colors whitespace-nowrap cursor-pointer ${
+              currentTab === 'groups'
+                ? 'border-b-2 border-yellow-400 pb-1 text-white font-black'
+                : 'text-indigo-200 hover:text-white'
+            }`}
+          >
+            <Layers className="w-4 h-4 text-yellow-400" />
+            <span>Group Stage</span>
+            {hasActiveGroupStage && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-400 text-indigo-950 font-black">
+                Pools
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            id="tab-bracket"
+            onClick={() => onTabChange('bracket')}
+            className={`flex items-center gap-2 py-1.5 transition-colors whitespace-nowrap cursor-pointer ${
+              currentTab === 'bracket'
+                ? 'border-b-2 border-yellow-400 pb-1 text-white font-black'
+                : 'text-indigo-200 hover:text-white'
+            }`}
+          >
+            <Swords className="w-4 h-4 text-yellow-400" />
+            <span>Playoff Bracket</span>
+            {hasActiveBracket && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-400 text-emerald-950 font-black">
+                Active
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
             id="tab-history"
             onClick={() => onTabChange('history')}
             className={`flex items-center gap-2 py-1.5 transition-colors whitespace-nowrap cursor-pointer ${
@@ -182,6 +232,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             onClick={onOpenConfig}
             className="flex items-center gap-1.5 py-1.5 ml-auto text-indigo-200 hover:text-white transition-colors whitespace-nowrap cursor-pointer"
             title="Session & Court Settings"
+            aria-label="Session & Court Settings"
           >
             <Settings className="w-4 h-4 text-yellow-400" />
             <span>Settings</span>

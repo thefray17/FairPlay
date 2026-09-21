@@ -159,6 +159,7 @@ export const OpenPlayHistory: React.FC<OpenPlayHistoryProps> = ({
                               type="button"
                               onClick={() => setTempScore1((s) => Math.max(0, s - 1))}
                               className="w-6 h-6 rounded-md bg-white hover:bg-slate-200 text-slate-700 font-black text-xs flex items-center justify-center cursor-pointer shadow-2xs"
+                              aria-label="Decrease Team 1 score"
                             >
                               -
                             </button>
@@ -175,6 +176,7 @@ export const OpenPlayHistory: React.FC<OpenPlayHistoryProps> = ({
                               type="button"
                               onClick={() => setTempScore1((s) => s + 1)}
                               className="w-6 h-6 rounded-md bg-white hover:bg-slate-200 text-slate-700 font-black text-xs flex items-center justify-center cursor-pointer shadow-2xs"
+                              aria-label="Increase Team 1 score"
                             >
                               +
                             </button>
@@ -185,6 +187,7 @@ export const OpenPlayHistory: React.FC<OpenPlayHistoryProps> = ({
                               type="button"
                               onClick={() => setTempScore2((s) => Math.max(0, s - 1))}
                               className="w-6 h-6 rounded-md bg-white hover:bg-slate-200 text-slate-700 font-black text-xs flex items-center justify-center cursor-pointer shadow-2xs"
+                              aria-label="Decrease Team 2 score"
                             >
                               -
                             </button>
@@ -201,6 +204,7 @@ export const OpenPlayHistory: React.FC<OpenPlayHistoryProps> = ({
                               type="button"
                               onClick={() => setTempScore2((s) => s + 1)}
                               className="w-6 h-6 rounded-md bg-white hover:bg-slate-200 text-slate-700 font-black text-xs flex items-center justify-center cursor-pointer shadow-2xs"
+                              aria-label="Increase Team 2 score"
                             >
                               +
                             </button>
@@ -216,6 +220,7 @@ export const OpenPlayHistory: React.FC<OpenPlayHistoryProps> = ({
                             type="button"
                             onClick={cancelEdit}
                             className="p-1 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 cursor-pointer"
+                            aria-label="Cancel editing score"
                           >
                             <X className="w-3 h-3" />
                           </button>
@@ -251,6 +256,7 @@ export const OpenPlayHistory: React.FC<OpenPlayHistoryProps> = ({
                       onClick={() => startEdit(m.id, m.score1, m.score2)}
                       className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 transition-colors cursor-pointer"
                       title="Edit match score"
+                      aria-label="Edit match score"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
@@ -261,6 +267,7 @@ export const OpenPlayHistory: React.FC<OpenPlayHistoryProps> = ({
                     onClick={() => onDeleteMatch(m.id)}
                     className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                     title="Delete match log"
+                    aria-label="Delete match log"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>

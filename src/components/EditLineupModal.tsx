@@ -359,6 +359,7 @@ export const EditLineupModal: React.FC<EditLineupModalProps> = ({
                   onClick={handleAutoFillWithPrioritized}
                   className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-indigo-900 hover:bg-indigo-950 text-yellow-300 font-bold text-[11px] uppercase tracking-wide transition-all cursor-pointer shadow-2xs"
                   title="Auto-fill empty slots with the highest-priority bench players"
+                  aria-label="Auto-fill empty slots with the highest-priority bench players"
                 >
                   <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
                   <span>Auto-Fill Bench</span>
@@ -370,6 +371,7 @@ export const EditLineupModal: React.FC<EditLineupModalProps> = ({
                   onClick={handleShufflePartners}
                   className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-700 font-bold text-[11px] border border-slate-200 transition-all cursor-pointer shadow-2xs"
                   title="Swap partners between teams"
+                  aria-label="Swap partners between teams"
                 >
                   <Shuffle className="w-3.5 h-3.5 text-indigo-600" />
                 </button>
@@ -379,6 +381,7 @@ export const EditLineupModal: React.FC<EditLineupModalProps> = ({
                 onClick={handleSwapTeams}
                 className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-700 font-bold text-[11px] border border-slate-200 transition-all cursor-pointer shadow-2xs"
                 title="Swap Team 1 and Team 2 sides"
+                aria-label="Swap Team 1 and Team 2 sides"
               >
                 <ArrowRightLeft className="w-3.5 h-3.5 text-slate-600" />
                 <span>Swap Sides</span>
@@ -490,6 +493,7 @@ export const EditLineupModal: React.FC<EditLineupModalProps> = ({
                             onClick={(e) => handleClearSlot(1, idx, e)}
                             className="w-6 h-6 rounded-full hover:bg-rose-100 text-slate-400 hover:text-rose-600 flex items-center justify-center transition-colors cursor-pointer shrink-0"
                             title="Remove player from slot"
+                            aria-label="Remove player from slot"
                           >
                             <X className="w-3.5 h-3.5" />
                           </button>
@@ -608,6 +612,7 @@ export const EditLineupModal: React.FC<EditLineupModalProps> = ({
                             onClick={(e) => handleClearSlot(2, idx, e)}
                             className="w-6 h-6 rounded-full hover:bg-rose-100 text-slate-400 hover:text-rose-600 flex items-center justify-center transition-colors cursor-pointer shrink-0"
                             title="Remove player from slot"
+                            aria-label="Remove player from slot"
                           >
                             <X className="w-3.5 h-3.5" />
                           </button>
@@ -717,6 +722,7 @@ export const EditLineupModal: React.FC<EditLineupModalProps> = ({
                   type="button"
                   onClick={() => setSearchQuery('')}
                   className="w-5 h-5 rounded-full text-slate-400 hover:text-slate-600 absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center justify-center cursor-pointer"
+                  aria-label="Clear search"
                 >
                   <X className="w-3 h-3" />
                 </button>

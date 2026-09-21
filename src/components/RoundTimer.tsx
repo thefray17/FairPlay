@@ -94,6 +94,7 @@ export const RoundTimer: React.FC<RoundTimerProps> = ({
               : 'bg-indigo-600 text-white hover:bg-indigo-700 font-black'
           }`}
           title={isRunning ? 'Pause Timer' : 'Start Timer'}
+          aria-label={isRunning ? 'Pause Timer' : 'Start Timer'}
         >
           {isRunning ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 fill-current" />}
         </button>
@@ -104,6 +105,7 @@ export const RoundTimer: React.FC<RoundTimerProps> = ({
           onClick={resetTimer}
           className="p-1.5 rounded-xl text-slate-500 hover:bg-slate-200 hover:text-slate-800 transition-colors cursor-pointer"
           title="Reset Timer"
+          aria-label="Reset Timer"
         >
           <RotateCcw className="w-3.5 h-3.5" />
         </button>
@@ -137,6 +139,7 @@ export const RoundTimer: React.FC<RoundTimerProps> = ({
             soundEnabled ? 'text-indigo-600 hover:bg-indigo-50' : 'text-slate-400 hover:bg-slate-200'
           }`}
           title={soundEnabled ? 'Mute buzzer sound' : 'Enable buzzer sound'}
+          aria-label={soundEnabled ? 'Mute buzzer sound' : 'Enable buzzer sound'}
         >
           {soundEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
         </button>

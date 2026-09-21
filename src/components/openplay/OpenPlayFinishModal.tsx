@@ -91,6 +91,7 @@ export const OpenPlayFinishModal: React.FC<OpenPlayFinishModalProps> = ({
             type="button"
             onClick={onClose}
             className="p-1.5 rounded-lg text-emerald-200 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+            aria-label="Close modal"
           >
             <X className="w-5 h-5" />
           </button>

@@ -40,6 +40,7 @@ export const OpenPlayMobileBottomNav: React.FC<OpenPlayMobileBottomNavProps> = (
           type="button"
           id="openplay-mobile-nav-matches"
           onClick={() => handleTabClick('matches')}
+          aria-label={activeMatchesCount > 0 ? `Active Matches (${activeMatchesCount})` : 'Active Matches'}
           className={`flex flex-col items-center justify-center py-1.5 px-1 rounded-2xl transition-all cursor-pointer relative min-h-[52px] ${
             currentTab === 'matches'
               ? 'bg-emerald-600 text-white font-black shadow-sm'
@@ -62,6 +63,7 @@ export const OpenPlayMobileBottomNav: React.FC<OpenPlayMobileBottomNavProps> = (
           type="button"
           id="openplay-mobile-nav-standings"
           onClick={() => handleTabClick('standings')}
+          aria-label="Open Play Standings"
           className={`flex flex-col items-center justify-center py-1.5 px-1 rounded-2xl transition-all cursor-pointer relative min-h-[52px] ${
             currentTab === 'standings'
               ? 'bg-emerald-600 text-white font-black shadow-sm'
@@ -84,6 +86,7 @@ export const OpenPlayMobileBottomNav: React.FC<OpenPlayMobileBottomNavProps> = (
           type="button"
           id="openplay-mobile-nav-buckets"
           onClick={() => handleTabClick('buckets')}
+          aria-label={`Queue Buckets (${totalWaitingCount} waiting)`}
           className={`flex flex-col items-center justify-center py-1.5 px-1 rounded-2xl transition-all cursor-pointer relative min-h-[52px] ${
             isBucketsActive
               ? 'bg-emerald-600 text-white font-black shadow-sm'
@@ -112,6 +115,7 @@ export const OpenPlayMobileBottomNav: React.FC<OpenPlayMobileBottomNavProps> = (
           type="button"
           id="openplay-mobile-nav-history"
           onClick={() => handleTabClick('history')}
+          aria-label={`Open Play Match History (${historyCount} finished)`}
           className={`flex flex-col items-center justify-center py-1.5 px-1 rounded-2xl transition-all cursor-pointer relative min-h-[52px] ${
             currentTab === 'history'
               ? 'bg-emerald-600 text-white font-black shadow-sm'
@@ -145,6 +149,7 @@ export const OpenPlayMobileBottomNav: React.FC<OpenPlayMobileBottomNavProps> = (
           }}
           className="flex flex-col items-center justify-center py-1.5 px-1 rounded-2xl transition-all cursor-pointer text-slate-600 hover:text-emerald-900 hover:bg-slate-100/70 font-bold min-h-[52px]"
           title="Session & Court Settings"
+          aria-label="Session & Court Settings"
         >
           <Settings className="w-5 h-5 text-emerald-600" />
           <span className="text-[10px] tracking-tight mt-1 leading-none">Settings</span>

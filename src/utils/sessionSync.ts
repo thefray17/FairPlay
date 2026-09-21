@@ -1,4 +1,4 @@
-import { SessionConfig, Player, Round, UpcomingMatch } from '../types';
+import { SessionConfig, Player, Round, UpcomingMatch, Bracket } from '../types';
 import { OpenPlayConfig, OpenPlayMatch, OpenPlayPlayer } from '../types/openPlay';
 import {
   saveSessionToFirestore,
@@ -42,13 +42,72 @@ export interface SessionData {
   rounds?: Round[];
   upcomingMatches?: UpcomingMatch[];
   openPlay?: OpenPlaySessionData;
+  bracket?: Bracket;
   updatedAt: number;
   deviceOrigin?: string;
+  organizerToken?: string;
+  ownerUid?: string;
+  isOrganizer?: boolean;
+}
+
+/**
+ * Generate a cryptographically secure organizer write token.
+ * This private key allows the creator and authorized co-organizers to edit sessions,
+ * while regular players and spectators only hold the public view-only code.
+ */
+export function generateOrganizerToken(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    // Generates 53-character crypto-strength UUID with entropy
+    return `${crypto.randomUUID()}-${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
+  }
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    const arr = new Uint8Array(24);
+    crypto.getRandomValues(arr);
+    return Array.from(arr, (b) => b.toString(16).padStart(2, '0')).join('');
+  }
+  return (
+    Math.random().toString(36).substring(2, 15) +
+    Math.random().toString(36).substring(2, 15) +
+    Date.now().toString(36)
+  );
+}
+
+/**
+ * Retrieve the saved organizer token for a session from this device
+ */
+export function getOrganizerToken(sessionId: string): string | null {
+  if (typeof window === 'undefined') return null;
+  const clean = sanitizeSessionCode(sessionId);
+  if (!clean) return null;
+  return (
+    localStorage.getItem(`fairplay_organizer_token_${clean}`) ||
+    localStorage.getItem(`fairclub_organizer_token_${clean}`) ||
+    null
+  );
+}
+
+/**
+ * Save an organizer write token to this device's storage (e.g. after creating or scanning admin QR)
+ */
+export function setOrganizerToken(sessionId: string, token: string): void {
+  if (typeof window === 'undefined') return;
+  const clean = sanitizeSessionCode(sessionId);
+  if (!clean || !token) return;
+  const trimmedToken = token.trim();
+  localStorage.setItem(`fairplay_organizer_token_${clean}`, trimmedToken);
+  localStorage.setItem(`fairclub_organizer_token_${clean}`, trimmedToken);
+}
+
+/**
+ * Check whether this device has organizer (write) privileges for the session
+ */
+export function isSessionOrganizer(sessionId: string): boolean {
+  return !!getOrganizerToken(sessionId);
 }
 
 /**
  * Sanitize and enforce user-friendly session codes.
- * Standard codes are 4-digit PINs (e.g. "7429", "8314") or short codes (e.g. "BDM-7429").
+ * Standard codes are 4-digit PINs (e.g. "4821", "8314") or short codes (e.g. "BDM-4821").
  * Any mangled hostname or overly long string is immediately normalized.
  */
 export function sanitizeSessionCode(raw: string): string {
@@ -64,17 +123,17 @@ export function sanitizeSessionCode(raw: string): string {
 
   // If someone passed an absurdly long string, mangled hostname, or URL leftovers
   if (clean.length > 10 || clean.startsWith('HTTP') || clean.includes('AIS-DEV') || clean.includes('RUNAPP')) {
-    // Check if it ends with or contains 4 digits (like 7429)
-    const digitMatch = clean.match(/\b\d{4}\b/);
+    // Check if it ends with or contains 4 digits
+    const digitMatch = clean.match(/\b\d{4}\b/) || clean.match(/\d{4}/);
     if (digitMatch) return digitMatch[0];
-    return '7429';
+    return '';
   }
 
   return clean;
 }
 
 /**
- * Generate a friendly, ultra-short 4-digit session code (e.g. "7429", "8314").
+ * Generate a friendly, ultra-short 4-digit session code (e.g. "4821", "8314").
  * Easy to remember, easy to shout across a noisy gym/court, and instant to type
  * on a phone's numeric keypad without changing keyboards or typing dashes.
  */
@@ -84,8 +143,9 @@ export function generateSessionId(): string {
 }
 
 /**
- * Clean and extract a session ID from either a raw code ("7429", "BDM-7429")
- * or a pasted full URL ("https://domain.com/?session=7429", "/openplay?session=7429", or hash)
+ * Clean and extract a session ID from either a raw code ("4821", "BDM-4821")
+ * or a pasted full URL ("https://domain.com/?session=4821&key=...", "/openplay?session=4821", or hash).
+ * Automatically stores the private organizer key if provided in the URL query string.
  */
 export function extractSessionId(input: string): string {
   if (!input) return '';
@@ -97,10 +157,22 @@ export function extractSessionId(input: string): string {
       const fullUrl = trimmed.startsWith('http') ? trimmed : `https://fairplay.local/${trimmed.replace(/^\/+/, '')}`;
       const url = new URL(fullUrl);
       
+      // Check for organizer key in query parameters (editToken, organizerToken, token, key, k)
+      const adminKey =
+        url.searchParams.get('editToken') ||
+        url.searchParams.get('organizerToken') ||
+        url.searchParams.get('token') ||
+        url.searchParams.get('key') ||
+        url.searchParams.get('k');
+
       // 1. Direct query parameter: ?session=... or ?s=...
       const sessionParam = url.searchParams.get('session') || url.searchParams.get('s');
       if (sessionParam && sessionParam.trim()) {
-        return sanitizeSessionCode(sessionParam.trim());
+        const cleanCode = sanitizeSessionCode(sessionParam.trim());
+        if (adminKey && cleanCode) {
+          setOrganizerToken(cleanCode, adminKey.trim());
+        }
+        return cleanCode;
       }
 
       // 2. Query inside hash: #/openplay?session=...
@@ -109,13 +181,23 @@ export function extractSessionId(input: string): string {
         if (hashQueryPart) {
           const hashParams = new URLSearchParams(hashQueryPart);
           const hashSession = hashParams.get('session') || hashParams.get('s');
+          const hashKey =
+            hashParams.get('editToken') ||
+            hashParams.get('organizerToken') ||
+            hashParams.get('token') ||
+            hashParams.get('key') ||
+            hashParams.get('k');
           if (hashSession && hashSession.trim()) {
-            return sanitizeSessionCode(hashSession.trim());
+            const cleanCode = sanitizeSessionCode(hashSession.trim());
+            if (hashKey && cleanCode) {
+              setOrganizerToken(cleanCode, hashKey.trim());
+            }
+            return cleanCode;
           }
         }
       }
 
-      // 3. Direct hash value: #7429 or #BDM-7429
+      // 3. Direct hash value: #4821 or #BDM-4821
       if (url.hash && url.hash.length > 1) {
         const cleanHash = url.hash.replace(/^#\/?/, '').split('?')[0];
         if (/^[a-zA-Z0-9_-]{3,10}$/.test(cleanHash)) {
@@ -132,13 +214,28 @@ export function extractSessionId(input: string): string {
 }
 
 /**
- * Construct the full shareable URL with the session ID parameter
+ * Construct the shareable URL.
+ * - By default returns a Viewer Link (Read-Only) with just the session PIN
+ * - If editAccess or coOrganizer is true, embeds the private organizer token
  */
-export function buildSessionShareUrl(sessionId: string): string {
+export function buildSessionShareUrl(
+  sessionId: string,
+  options?: { editAccess?: boolean; coOrganizer?: boolean }
+): string {
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   const pathname = typeof window !== 'undefined' ? window.location.pathname : '/';
   const cleanId = sessionId.trim().toUpperCase();
-  return `${origin}${pathname}?session=${encodeURIComponent(cleanId)}`;
+
+  const baseUrl = `${origin}${pathname}?session=${encodeURIComponent(cleanId)}`;
+
+  if (options?.editAccess || options?.coOrganizer) {
+    const token = getOrganizerToken(cleanId);
+    if (token) {
+      return `${baseUrl}&editToken=${encodeURIComponent(token)}`;
+    }
+  }
+
+  return baseUrl;
 }
 
 /**
@@ -261,6 +358,9 @@ export function applySessionToLocalStorage(session: SessionData): void {
     if (session.upcomingMatches && Array.isArray(session.upcomingMatches)) {
       localStorage.setItem('fairclub_upcoming_v1', JSON.stringify(session.upcomingMatches));
     }
+    if (session.bracket) {
+      localStorage.setItem('fairclub_bracket_v1', JSON.stringify(session.bracket));
+    }
     localStorage.setItem('fairclub_onboarded_v1', 'true');
 
     if (session.openPlay) {
@@ -288,6 +388,7 @@ export async function saveSessionToCloud(
     rounds?: Round[];
     upcomingMatches?: UpcomingMatch[];
     openPlay?: OpenPlaySessionData;
+    bracket?: Bracket;
   }
 ): Promise<{ success: boolean; session?: SessionData; error?: string }> {
   try {
@@ -332,6 +433,25 @@ export async function saveSessionToCloud(
       openPlay = getCurrentOpenPlayData();
     }
 
+    let bracket = payload.bracket;
+    if (bracket === undefined && typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('fairclub_bracket_v1');
+        if (raw) bracket = JSON.parse(raw);
+      } catch {}
+    }
+
+    const token = getOrganizerToken(cleanId);
+    if (!token) {
+      // Device is in read-only mode (loaded via public PIN or spectator join link)
+      const msg = 'Read-only session: This device does not have edit permissions. Ask the session organizer to share an Edit link.';
+      console.warn(`[FairPlay Sync] Session ${cleanId} write skipped: device is in read-only mode.`);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('fairplay:sync-error', { detail: { error: msg } }));
+      }
+      return { success: false, error: msg };
+    }
+
     const fullSessionPayload: SessionData = {
       ...payload,
       ...(config ? { config } : {}),
@@ -339,39 +459,62 @@ export async function saveSessionToCloud(
       ...(rounds ? { rounds } : {}),
       ...(upcomingMatches ? { upcomingMatches } : {}),
       ...(openPlay ? { openPlay } : {}),
+      ...(bracket ? { bracket } : {}),
       id: cleanId,
       updatedAt: Date.now(),
+      organizerToken: token,
       deviceOrigin: typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown',
     };
 
-    // 1. Dual-sync to Google Firebase Firestore for real-time cloud persistence
-    saveSessionToFirestore(cleanId, fullSessionPayload).catch((firestoreErr) => {
+    // 1. Dual-sync to Google Firebase Firestore for real-time cloud persistence with token
+    saveSessionToFirestore(cleanId, fullSessionPayload, token).catch((firestoreErr) => {
       console.warn('Background Firestore sync notice:', firestoreErr);
     });
 
-    // 2. Save to server API endpoint for local filesystem cache and cross-browser resilience
+    // 2. Save to server API endpoint with authorization token header
     const res = await fetch(`/api/sessions/${cleanId}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'x-organizer-token': token,
       },
       body: JSON.stringify(fullSessionPayload),
     });
 
+    if (res.status === 403) {
+      const errData = await res.json().catch(() => ({}));
+      const msg = errData.error || 'Write permission denied: You are in read-only viewer mode. Ask the host organizer to share the Edit link.';
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('fairplay:sync-error', { detail: { error: msg } }));
+      }
+      return { success: false, error: msg };
+    }
+
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
+      const msg = errData.error || `Server responded with ${res.status}`;
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('fairplay:sync-error', { detail: { error: msg } }));
+      }
       return {
         success: false,
-        error: errData.error || `Server responded with ${res.status}`,
+        error: msg,
       };
     }
 
     const data = await res.json();
+    if (data.organizerToken) {
+      setOrganizerToken(cleanId, data.organizerToken);
+    }
     return { success: true, session: data.session || fullSessionPayload };
   } catch (err: any) {
+    const msg = err?.message || 'Network error saving session';
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('fairplay:sync-error', { detail: { error: msg } }));
+    }
     return {
       success: false,
-      error: err?.message || 'Network error saving session',
+      error: msg,
     };
   }
 }
@@ -386,23 +529,36 @@ export async function fetchSessionFromCloud(
     const cleanId = extractSessionId(sessionId);
     if (!cleanId) return { success: false, error: 'Please provide a valid session ID' };
 
+    const token = getOrganizerToken(cleanId);
+
     // 1. Try Firebase Firestore first for real-time cloud data
     try {
       const firestoreResult = await fetchSessionFromFirestore(cleanId);
       if (firestoreResult.success && firestoreResult.session) {
-        return { success: true, session: firestoreResult.session };
+        const s = firestoreResult.session;
+        if (s.organizerToken && token && s.organizerToken === token) {
+          s.isOrganizer = true;
+        } else {
+          s.isOrganizer = !!token;
+        }
+        return { success: true, session: s };
       }
     } catch (fsErr) {
       console.debug('Firestore lookup fallback to local server:', fsErr);
     }
 
-    // 2. Fallback to Express backend storage
-    const res = await fetch(`/api/sessions/${cleanId}`);
+    // 2. Fallback to Express backend storage with organizer token verification
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['x-organizer-token'] = token;
+    }
+
+    const res = await fetch(`/api/sessions/${cleanId}`, { headers });
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
       return {
         success: false,
-        error: errData.error || `Session ${cleanId} was not found on server`,
+        error: errData.error || `Session "${cleanId}" was not found on server`,
       };
     }
 
@@ -411,10 +567,15 @@ export async function fetchSessionFromCloud(
       return { success: false, error: 'Session data was empty' };
     }
 
-    // Proactively seed into Firestore in background if not yet cached in cloud
-    saveSessionToFirestore(cleanId, data.session).catch(() => {});
+    const sessionData: SessionData = data.session;
+    if (sessionData.organizerToken) {
+      setOrganizerToken(cleanId, sessionData.organizerToken);
+    }
 
-    return { success: true, session: data.session };
+    // Proactively seed into Firestore in background if not yet cached in cloud
+    saveSessionToFirestore(cleanId, sessionData, token || sessionData.organizerToken).catch(() => {});
+
+    return { success: true, session: sessionData };
   } catch (err: any) {
     return {
       success: false,

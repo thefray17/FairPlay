@@ -1,16 +1,18 @@
 import React, { useState } from 'react';
-import { UserPlus, X, AlertCircle } from 'lucide-react';
+import { UserPlus, X, AlertCircle, Lock } from 'lucide-react';
 
 interface AddPlayerModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAddPlayer: (name: string) => void;
+  isLocked?: boolean;
 }
 
 export const AddPlayerModal: React.FC<AddPlayerModalProps> = ({
   isOpen,
   onClose,
   onAddPlayer,
+  isLocked = false,
 }) => {
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -19,6 +21,10 @@ export const AddPlayerModal: React.FC<AddPlayerModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLocked) {
+      setError('Player list is locked for the current tournament.');
+      return;
+    }
     const trimmed = name.trim();
     if (!trimmed) {
       setError('Player name cannot be empty.');
@@ -46,56 +52,83 @@ export const AddPlayerModal: React.FC<AddPlayerModalProps> = ({
             type="button"
             onClick={onClose}
             className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 transition-colors cursor-pointer"
+            aria-label="Close"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="pt-4 space-y-4">
-          <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-              Player Full Name / Nickname
-            </label>
-            <input
-              type="text"
-              autoFocus
-              value={name}
-              onChange={(e) => {
-                setName(e.target.value);
-                if (error) setError(null);
-              }}
-              enterKeyHint="done"
-              placeholder="Player name"
-              className="w-full text-sm font-semibold text-slate-900 bg-slate-50 rounded-2xl px-4 py-3 min-h-[46px] border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600"
-            />
-            <p className="text-[11px] text-slate-500 mt-1.5 font-medium">
-              New players are automatically slotted into the equal rotation queue!
-            </p>
-          </div>
-
-          {error && (
-            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
-              <span>{error}</span>
+        {isLocked ? (
+          <div className="pt-4 space-y-4">
+            <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-950 flex items-start gap-3">
+              <div className="w-8 h-8 rounded-xl bg-amber-200 text-amber-900 flex items-center justify-center shrink-0">
+                <Lock className="w-4 h-4" />
+              </div>
+              <div className="text-xs">
+                <span className="font-black block text-sm">Player Roster Locked</span>
+                <p className="mt-1 text-amber-900/90 font-medium">
+                  Player list is locked for the current tournament to guarantee complete round-robin fairness across all scheduled rounds.
+                </p>
+              </div>
             </div>
-          )}
 
-          <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2.5">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2.5 min-h-[42px] rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-5 py-2.5 min-h-[42px] rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs uppercase tracking-wider shadow-md hover:shadow-indigo-300 transition-all cursor-pointer active:scale-95"
-            >
-              Add to Roster
-            </button>
+            <div className="pt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-black text-white font-black text-xs uppercase tracking-wider transition-all cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
           </div>
-        </form>
+        ) : (
+          <form onSubmit={handleSubmit} className="pt-4 space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                Player Full Name / Nickname
+              </label>
+              <input
+                type="text"
+                autoFocus
+                value={name}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  if (error) setError(null);
+                }}
+                enterKeyHint="done"
+                placeholder="Player name"
+                className="w-full text-sm font-semibold text-slate-900 bg-slate-50 rounded-2xl px-4 py-3 min-h-[46px] border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+              />
+              <p className="text-[11px] text-slate-500 mt-1.5 font-medium">
+                New players are automatically slotted into the equal rotation queue!
+              </p>
+            </div>
+
+            {error && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2.5 min-h-[42px] rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2.5 min-h-[42px] rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs uppercase tracking-wider shadow-md hover:shadow-indigo-300 transition-all cursor-pointer active:scale-95"
+              >
+                Add to Roster
+              </button>
+            </div>
+          </form>
+        )}
       </div>
     </div>
   );

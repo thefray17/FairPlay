@@ -55,7 +55,7 @@ export interface OpenPlayNotification {
   id: string;
   title: string;
   message: string;
-  type: 'fallback' | 'match_call' | 'queue_update' | 'bench_rotation' | 'shuffle' | 'court_dispatched';
+  type: 'fallback' | 'match_call' | 'queue_update' | 'bench_rotation' | 'shuffle' | 'court_dispatched' | 'sync_error';
   timestamp: number;
   courtNumber?: number;
   winnersNames?: string[];

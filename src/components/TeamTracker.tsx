@@ -209,6 +209,7 @@ export const TeamTracker: React.FC<TeamTrackerProps> = ({
             onClick={handleSwapTeams}
             className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] transition-colors cursor-pointer"
             title="Swap Team 1 and Team 2"
+            aria-label="Swap Team 1 and Team 2"
           >
             <ArrowRightLeft className="w-3.5 h-3.5" />
             <span>Swap Teams</span>

@@ -7,7 +7,7 @@
       "properties": {
         "id": {
           "type": "string",
-          "description": "Session code (e.g. 7429, BDM-7429)"
+          "description": "Session code (e.g. 4821, BDM-4821)"
         },
         "config": {
           "type": "object",
@@ -28,6 +28,14 @@
         "openPlay": {
           "type": "object",
           "description": "Open Play 3-bucket state: active matches, winners queue, losers queue, resting bench, history"
+        },
+        "ownerUid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the session creator"
+        },
+        "organizerToken": {
+          "type": "string",
+          "description": "Private write token for session admin and co-organizers"
         },
         "updatedAt": {
           "type": "number",
@@ -118,6 +126,6 @@
     }
   },
   "securityRules": {
-    "rules": "rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /sessions/{sessionId} {\n      allow read: if true;\n      allow write: if request.resource.data.id is string && request.resource.data.id.size() > 0 && request.resource.data.id.size() <= 64;\n    }\n    match /users/{userId} {\n      allow read: if true;\n      allow write: if request.auth != null && request.auth.uid == userId;\n    }\n    match /playerProfiles/{profileId} {\n      allow read: if true;\n      allow write: if request.resource.data.name is string && request.resource.data.name.size() > 0;\n    }\n  }\n}"
+    "rules": "rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    function isValidSessionWrite() {\n      let data = request.resource.data;\n      return data.keys().hasOnly(['id', 'config', 'players', 'rounds', 'upcomingMatches', 'openPlay', 'ownerUid', 'organizerToken', 'updatedAt', 'createdAt', 'deviceOrigin']) && data.id is string && data.id.size() > 0 && data.id.size() <= 64 && data.organizerToken is string && data.organizerToken.size() > 0 && data.organizerToken.size() <= 128 && (!('updatedAt' in data) || data.updatedAt is number) && (!('createdAt' in data) || data.createdAt is number) && (!('config' in data) || data.config is map) && (!('players' in data) || data.players is list) && (!('rounds' in data) || data.rounds is list) && (!('upcomingMatches' in data) || data.upcomingMatches is list) && (!('openPlay' in data) || data.openPlay is map) && (!('ownerUid' in data) || (data.ownerUid is string && data.ownerUid.size() <= 128)) && (!('deviceOrigin' in data) || (data.deviceOrigin is string && data.deviceOrigin.size() <= 256));\n    }\n    match /sessions/{sessionId} {\n      allow read: if true;\n      allow create: if isValidSessionWrite() && request.resource.data.organizerToken is string && request.resource.data.organizerToken.size() > 0;\n      allow update: if isValidSessionWrite() && resource.data.organizerToken != null && request.resource.data.organizerToken == resource.data.organizerToken;\n      allow delete: if request.auth != null && resource.data.ownerUid == request.auth.uid;\n    }\n    match /users/{userId} {\n      allow read: if request.auth != null;\n      allow write: if request.auth != null && request.auth.uid == userId;\n    }\n    match /playerProfiles/{profileId} {\n      allow read: if request.auth != null;\n      allow write: if request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 64;\n    }\n  }\n}"
   }
 }

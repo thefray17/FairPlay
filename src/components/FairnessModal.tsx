@@ -79,6 +79,7 @@ export const FairnessModal: React.FC<FairnessModalProps> = ({
               onClick={onClose}
               className="w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 flex items-center justify-center text-lg font-bold leading-none cursor-pointer transition-colors shrink-0"
               title="Close"
+              aria-label="Close"
             >
               ✕
             </button>

@@ -236,6 +236,7 @@ export const QRCameraScanner: React.FC<QRCameraScannerProps> = ({ onScan, onClos
             onClick={toggleCamera}
             className="p-2 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-white border border-slate-700/60 shadow-md transition-colors cursor-pointer"
             title="Switch camera"
+            aria-label="Switch camera"
           >
             <RefreshCw className="w-4 h-4" />
           </button>
@@ -245,6 +246,7 @@ export const QRCameraScanner: React.FC<QRCameraScannerProps> = ({ onScan, onClos
           onClick={onClose}
           className="p-2 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-white border border-slate-700/60 shadow-md transition-colors cursor-pointer"
           title="Close camera"
+          aria-label="Close camera scanner"
         >
           <X className="w-4 h-4" />
         </button>

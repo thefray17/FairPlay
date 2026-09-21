@@ -1,6 +1,6 @@
 import React from 'react';
 import { TabType } from './Navbar';
-import { LayoutGrid, Trophy, Users, History, Settings, Sparkles } from 'lucide-react';
+import { LayoutGrid, Trophy, Users, History, Settings, Sparkles, Swords, Layers } from 'lucide-react';
 import { soundFx } from '../utils/audio';
 
 interface MobileBottomNavProps {
@@ -10,6 +10,8 @@ interface MobileBottomNavProps {
   playersCount: number;
   hasActiveRound: boolean;
   onOpenConfig: () => void;
+  hasActiveBracket?: boolean;
+  hasActiveGroupStage?: boolean;
 }
 
 export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
@@ -19,6 +21,8 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   playersCount,
   hasActiveRound,
   onOpenConfig,
+  hasActiveBracket,
+  hasActiveGroupStage,
 }) => {
   const handleTabClick = (tab: TabType) => {
     soundFx.playPointChime();
@@ -31,26 +35,27 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
       aria-label="Mobile Navigation Bar"
       className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/90 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] md:hidden pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-1.5 px-2"
     >
-      <div className="grid grid-cols-5 gap-1 items-center max-w-md mx-auto">
+      <div className="grid grid-cols-6 gap-0.5 items-center max-w-lg mx-auto">
         {/* Tab 1: Live Courts */}
         <button
           type="button"
           id="mobile-nav-tab-active"
           onClick={() => handleTabClick('active')}
-          className={`flex flex-col items-center justify-center py-1.5 px-1 rounded-2xl transition-all cursor-pointer relative min-h-[52px] ${
+          aria-label={roundsCount > 0 ? `Matches (Round ${roundsCount})` : 'Matches'}
+          className={`flex flex-col items-center justify-center py-1.5 px-0.5 rounded-2xl transition-all cursor-pointer relative min-h-[52px] ${
             currentTab === 'active'
               ? 'bg-indigo-600 text-white font-black shadow-sm'
               : 'text-slate-600 hover:text-indigo-900 hover:bg-slate-100/70 font-bold'
           }`}
         >
           <div className="relative">
-            <LayoutGrid className="w-5 h-5" />
+            <LayoutGrid className="w-4.5 h-4.5" />
             {hasActiveRound && currentTab !== 'active' && (
               <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-yellow-400 border-2 border-white rounded-full animate-ping" />
             )}
           </div>
-          <span className="text-[10px] tracking-tight mt-1 leading-none">
-            {roundsCount > 0 ? `Matches (R${roundsCount})` : 'Matches'}
+          <span className="text-[9px] tracking-tight mt-1 leading-none">
+            {roundsCount > 0 ? `R${roundsCount}` : 'Play'}
           </span>
         </button>
 
@@ -59,38 +64,86 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           type="button"
           id="mobile-nav-tab-standings"
           onClick={() => handleTabClick('standings')}
-          className={`flex flex-col items-center justify-center py-1.5 px-1 rounded-2xl transition-all cursor-pointer relative min-h-[52px] ${
+          aria-label="Standings Leaderboard"
+          className={`flex flex-col items-center justify-center py-1.5 px-0.5 rounded-2xl transition-all cursor-pointer relative min-h-[52px] ${
             currentTab === 'standings'
               ? 'bg-indigo-600 text-white font-black shadow-sm'
               : 'text-slate-600 hover:text-indigo-900 hover:bg-slate-100/70 font-bold'
           }`}
         >
           <div className="relative">
-            <Trophy className="w-5 h-5" />
+            <Trophy className="w-4.5 h-4.5" />
             {currentTab !== 'standings' && (
-              <span className="absolute -top-1 -right-1.5 px-1 bg-yellow-400 text-indigo-950 rounded-full text-[8px] font-black">
+              <span className="absolute -top-1 -right-1.5 px-1 bg-yellow-400 text-indigo-950 rounded-full text-[7px] font-black">
                 Live
               </span>
             )}
           </div>
-          <span className="text-[10px] tracking-tight mt-1 leading-none">Standings</span>
+          <span className="text-[9px] tracking-tight mt-1 leading-none">Rankings</span>
         </button>
 
-        {/* Tab 3: Squad & Bench */}
+        {/* Tab 3: Group Stage */}
+        <button
+          type="button"
+          id="mobile-nav-tab-groups"
+          onClick={() => handleTabClick('groups')}
+          aria-label="Group Stage Pools"
+          className={`flex flex-col items-center justify-center py-1.5 px-0.5 rounded-2xl transition-all cursor-pointer relative min-h-[52px] ${
+            currentTab === 'groups'
+              ? 'bg-indigo-600 text-white font-black shadow-sm'
+              : 'text-slate-600 hover:text-indigo-900 hover:bg-slate-100/70 font-bold'
+          }`}
+        >
+          <div className="relative">
+            <Layers className="w-4.5 h-4.5" />
+            {hasActiveGroupStage && currentTab !== 'groups' && (
+              <span className="absolute -top-1 -right-1.5 px-1 bg-amber-400 text-indigo-950 rounded-full text-[7px] font-black">
+                Pools
+              </span>
+            )}
+          </div>
+          <span className="text-[9px] tracking-tight mt-1 leading-none">Groups</span>
+        </button>
+
+        {/* Tab 4: Bracket Playoff */}
+        <button
+          type="button"
+          id="mobile-nav-tab-bracket"
+          onClick={() => handleTabClick('bracket')}
+          aria-label="Playoff Bracket"
+          className={`flex flex-col items-center justify-center py-1.5 px-0.5 rounded-2xl transition-all cursor-pointer relative min-h-[52px] ${
+            currentTab === 'bracket'
+              ? 'bg-indigo-600 text-white font-black shadow-sm'
+              : 'text-slate-600 hover:text-indigo-900 hover:bg-slate-100/70 font-bold'
+          }`}
+        >
+          <div className="relative">
+            <Swords className="w-4.5 h-4.5" />
+            {hasActiveBracket && currentTab !== 'bracket' && (
+              <span className="absolute -top-1 -right-1.5 px-1 bg-emerald-400 text-emerald-950 rounded-full text-[7px] font-black">
+                Play
+              </span>
+            )}
+          </div>
+          <span className="text-[9px] tracking-tight mt-1 leading-none">Bracket</span>
+        </button>
+
+        {/* Tab 5: Squad & Bench */}
         <button
           type="button"
           id="mobile-nav-tab-players"
           onClick={() => handleTabClick('players')}
-          className={`flex flex-col items-center justify-center py-1.5 px-1 rounded-2xl transition-all cursor-pointer relative min-h-[52px] ${
+          aria-label={`Squad & Bench (${playersCount} players)`}
+          className={`flex flex-col items-center justify-center py-1.5 px-0.5 rounded-2xl transition-all cursor-pointer relative min-h-[52px] ${
             currentTab === 'players'
               ? 'bg-indigo-600 text-white font-black shadow-sm'
               : 'text-slate-600 hover:text-indigo-900 hover:bg-slate-100/70 font-bold'
           }`}
         >
           <div className="relative">
-            <Users className="w-5 h-5" />
+            <Users className="w-4.5 h-4.5" />
             <span
-              className={`absolute -top-1 -right-2 px-1 rounded-full text-[8px] font-black ${
+              className={`absolute -top-1 -right-2 px-1 rounded-full text-[7px] font-black ${
                 currentTab === 'players'
                   ? 'bg-yellow-400 text-indigo-950'
                   : 'bg-indigo-100 text-indigo-800'
@@ -99,25 +152,26 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               {playersCount}
             </span>
           </div>
-          <span className="text-[10px] tracking-tight mt-1 leading-none">Squad</span>
+          <span className="text-[9px] tracking-tight mt-1 leading-none">Squad</span>
         </button>
 
-        {/* Tab 4: Match History */}
+        {/* Tab 6: Match History */}
         <button
           type="button"
           id="mobile-nav-tab-history"
           onClick={() => handleTabClick('history')}
-          className={`flex flex-col items-center justify-center py-1.5 px-1 rounded-2xl transition-all cursor-pointer relative min-h-[52px] ${
+          aria-label={`Match History (${roundsCount} rounds)`}
+          className={`flex flex-col items-center justify-center py-1.5 px-0.5 rounded-2xl transition-all cursor-pointer relative min-h-[52px] ${
             currentTab === 'history'
               ? 'bg-indigo-600 text-white font-black shadow-sm'
               : 'text-slate-600 hover:text-indigo-900 hover:bg-slate-100/70 font-bold'
           }`}
         >
           <div className="relative">
-            <History className="w-5 h-5" />
+            <History className="w-4.5 h-4.5" />
             {roundsCount > 0 && (
               <span
-                className={`absolute -top-1 -right-2 px-1 rounded-full text-[8px] font-black ${
+                className={`absolute -top-1 -right-2 px-1 rounded-full text-[7px] font-black ${
                   currentTab === 'history'
                     ? 'bg-yellow-400 text-indigo-950'
                     : 'bg-slate-200 text-slate-700'
@@ -127,24 +181,10 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               </span>
             )}
           </div>
-          <span className="text-[10px] tracking-tight mt-1 leading-none">History</span>
-        </button>
-
-        {/* Tab 5: Settings / Session Config */}
-        <button
-          type="button"
-          id="mobile-nav-btn-settings"
-          onClick={() => {
-            soundFx.playPointChime();
-            onOpenConfig();
-          }}
-          className="flex flex-col items-center justify-center py-1.5 px-1 rounded-2xl transition-all cursor-pointer text-slate-600 hover:text-indigo-900 hover:bg-slate-100/70 font-bold min-h-[52px]"
-          title="Court & Session Settings"
-        >
-          <Settings className="w-5 h-5 text-indigo-600" />
-          <span className="text-[10px] tracking-tight mt-1 leading-none">Config</span>
+          <span className="text-[9px] tracking-tight mt-1 leading-none">History</span>
         </button>
       </div>
     </nav>
   );
 };
+
