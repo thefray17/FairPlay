@@ -37,6 +37,8 @@ export function emitOpenPlayCloudSynced(sessionId: string, timestamp: number) {
 
 export interface SessionData {
   id: string;
+  clubId?: string;
+  createdAt?: number;
   config?: SessionConfig;
   players?: Player[];
   rounds?: Round[];
@@ -48,6 +50,31 @@ export interface SessionData {
   organizerToken?: string;
   ownerUid?: string;
   isOrganizer?: boolean;
+}
+
+/**
+ * Retrieve any session snapshots saved in localStorage on this device
+ */
+export function getSavedSessionsLocally(): Record<string, SessionData> {
+  if (typeof window === 'undefined') return {};
+  const result: Record<string, SessionData> = {};
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith('fairplay_session_cache_') || key.startsWith('fairclub_session_cache_'))) {
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          try {
+            const data = JSON.parse(raw);
+            if (data && data.id) {
+              result[data.id] = data;
+            }
+          } catch {}
+        }
+      }
+    }
+  } catch {}
+  return result;
 }
 
 /**
@@ -389,6 +416,7 @@ export async function saveSessionToCloud(
     upcomingMatches?: UpcomingMatch[];
     openPlay?: OpenPlaySessionData;
     bracket?: Bracket;
+    clubId?: string;
   }
 ): Promise<{ success: boolean; session?: SessionData; error?: string }> {
   try {
@@ -441,6 +469,14 @@ export async function saveSessionToCloud(
       } catch {}
     }
 
+    let clubId = payload.clubId;
+    if (!clubId && typeof window !== 'undefined') {
+      try {
+        const storedClubId = localStorage.getItem('fairplay_active_club_id_v1');
+        if (storedClubId) clubId = storedClubId;
+      } catch {}
+    }
+
     const token = getOrganizerToken(cleanId);
     if (!token) {
       // Device is in read-only mode (loaded via public PIN or spectator join link)
@@ -454,6 +490,7 @@ export async function saveSessionToCloud(
 
     const fullSessionPayload: SessionData = {
       ...payload,
+      ...(clubId ? { clubId } : {}),
       ...(config ? { config } : {}),
       ...(players ? { players } : {}),
       ...(rounds ? { rounds } : {}),
@@ -465,6 +502,13 @@ export async function saveSessionToCloud(
       organizerToken: token,
       deviceOrigin: typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown',
     };
+
+    // Auto-link session to parent club/squad if active
+    if (clubId && typeof window !== 'undefined') {
+      import('./clubSync').then((m) => {
+        m.linkSessionToClub(cleanId, clubId).catch(() => {});
+      }).catch(() => {});
+    }
 
     // 1. Dual-sync to Google Firebase Firestore for real-time cloud persistence with token
     saveSessionToFirestore(cleanId, fullSessionPayload, token).catch((firestoreErr) => {

@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { UserPlus, X, AlertCircle, Lock } from 'lucide-react';
+import { UserPlus, X, AlertCircle, Lock, User } from 'lucide-react';
+import { getDevicePlayerProfile } from '../utils/identitySync';
 
 interface AddPlayerModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAddPlayer: (name: string) => void;
   isLocked?: boolean;
+  existingPlayerNames?: string[];
 }
 
 export const AddPlayerModal: React.FC<AddPlayerModalProps> = ({
@@ -13,9 +15,17 @@ export const AddPlayerModal: React.FC<AddPlayerModalProps> = ({
   onClose,
   onAddPlayer,
   isLocked = false,
+  existingPlayerNames = [],
 }) => {
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  const deviceProfile = getDevicePlayerProfile();
+  const isDevicePlayerAlreadyInRoster =
+    deviceProfile &&
+    existingPlayerNames.some(
+      (n) => n.trim().toLowerCase() === deviceProfile.name.trim().toLowerCase()
+    );
 
   if (!isOpen) return null;
 
@@ -100,6 +110,24 @@ export const AddPlayerModal: React.FC<AddPlayerModalProps> = ({
                 placeholder="Player name"
                 className="w-full text-sm font-semibold text-slate-900 bg-slate-50 rounded-2xl px-4 py-3 min-h-[46px] border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600"
               />
+              {deviceProfile && !isDevicePlayerAlreadyInRoster && (
+                <div className="mt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setName(deviceProfile.name);
+                      if (error) setError(null);
+                    }}
+                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-900 text-xs font-bold border border-indigo-200 transition-colors cursor-pointer"
+                  >
+                    <span
+                      className="w-2.5 h-2.5 rounded-full"
+                      style={{ backgroundColor: deviceProfile.avatarColor || '#6366f1' }}
+                    />
+                    <span>Add Myself ({deviceProfile.name})</span>
+                  </button>
+                </div>
+              )}
               <p className="text-[11px] text-slate-500 mt-1.5 font-medium">
                 New players are automatically slotted into the equal rotation queue!
               </p>

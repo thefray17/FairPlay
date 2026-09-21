@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Player, Round, SessionConfig, UpcomingMatch, Bracket, GroupStage, GroupDoubleBracketTournament } from './types';
+import { Player, Round, SessionConfig, UpcomingMatch, Bracket, GroupStage, GroupDoubleBracketTournament, Club } from './types';
 import { DEFAULT_CONFIG, INITIAL_PLAYERS, AVATAR_COLORS } from './utils/sampleData';
 import {
   calculateFairnessMetric,
@@ -43,6 +43,10 @@ import { ResetSessionModal } from './components/ResetSessionModal';
 import { OnboardingModal } from './components/OnboardingModal';
 import { TransferSessionModal } from './components/TransferSessionModal';
 import { TournamentCompleteModal } from './components/TournamentCompleteModal';
+import { ClubModal } from './components/ClubModal';
+import { getActiveClub, CLUB_UPDATED_EVENT, saveClubLocally } from './utils/clubSync';
+import { ensurePlayerProfileId, getDevicePlayerProfile } from './utils/identitySync';
+import { updatePlayerProfilesMatchStats, saveClubToFirestore } from './lib/firebase';
 import {
   generateSessionId,
   generateOrganizerToken,
@@ -195,6 +199,27 @@ export default function App({
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [showResetModal, setShowResetModal] = useState(false);
   const [showFairnessModal, setShowFairnessModal] = useState(false);
+  const [showClubModal, setShowClubModal] = useState(false);
+  const [activeClub, setActiveClub] = useState<Club | null>(null);
+
+  // Load and listen for active club updates
+  useEffect(() => {
+    getActiveClub().then((club) => {
+      setActiveClub(club);
+    });
+
+    const handleClubEvent = () => {
+      getActiveClub().then((club) => {
+        setActiveClub(club);
+      });
+    };
+
+    window.addEventListener(CLUB_UPDATED_EVENT, handleClubEvent);
+    return () => {
+      window.removeEventListener(CLUB_UPDATED_EVENT, handleClubEvent);
+    };
+  }, []);
+
   const [showOnboarding, setShowOnboarding] = useState<boolean>(() => {
     try {
       const onboarded = localStorage.getItem(STORAGE_KEYS.ONBOARDED);
@@ -1106,6 +1131,27 @@ export default function App({
         if (match.score1 > match.score2) winner = 1;
         else if (match.score2 > match.score1) winner = 2;
 
+        // Cross-session stats aggregation across sessions
+        const t1Profiles = match.team1.playerIds
+          .map((id) => players.find((p) => p.id === id)?.playerProfileId)
+          .filter(Boolean) as string[];
+        const t2Profiles = match.team2.playerIds
+          .map((id) => players.find((p) => p.id === id)?.playerProfileId)
+          .filter(Boolean) as string[];
+
+        let winners: string[] = [];
+        let losers: string[] = [];
+        if (winner === 1) {
+          winners = t1Profiles;
+          losers = t2Profiles;
+        } else if (winner === 2) {
+          winners = t2Profiles;
+          losers = t1Profiles;
+        }
+        if (winners.length > 0 || losers.length > 0) {
+          updatePlayerProfilesMatchStats(winners, losers).catch(() => {});
+        }
+
         updatedMatches[matchIndex] = {
           ...match,
           status: 'completed',
@@ -1216,42 +1262,93 @@ export default function App({
   };
 
   // Player Management
-  const handleAddPlayer = (name: string) => {
+  const handleAddPlayer = async (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
     const colorIndex = players.length % AVATAR_COLORS.length;
     const nextRoundNumber = rounds.length + 1;
+
+    // Cross-session player profile identity
+    const { playerProfileId } = await ensurePlayerProfileId(trimmed, {
+      avatarColor: AVATAR_COLORS[colorIndex],
+      clubId: activeClub?.id,
+    });
+
     const newPlayer: Player = {
       id: `p-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-      name,
+      playerProfileId,
+      name: trimmed,
       active: true,
       avatarColor: AVATAR_COLORS[colorIndex],
       joinedAtRound: nextRoundNumber,
     };
     setPlayers((prev) => [...prev, newPlayer]);
 
+    // If session is owned by a club, add this playerProfileId to club members
+    if (activeClub && !activeClub.memberProfileIds.includes(playerProfileId)) {
+      const updatedClub: Club = {
+        ...activeClub,
+        memberProfileIds: [...activeClub.memberProfileIds, playerProfileId],
+        updatedAt: Date.now(),
+      };
+      setActiveClub(updatedClub);
+      saveClubLocally(updatedClub);
+      saveClubToFirestore(updatedClub).catch(() => {});
+    }
+
     if (rounds.length > 0) {
       soundFx.playPointChime();
       setReplacementNotice({
         id: `late-player-${Date.now()}`,
-        title: `Late Joiner: ${name}`,
+        title: `Late Joiner: ${trimmed}`,
         description: `Prioritized to play FIRST in Round ${nextRoundNumber} with catch-up match scheduling.`,
         type: 'replacement',
       });
     }
   };
 
-  const handleBulkAddPlayers = (names: string[]) => {
+  const handleBulkAddPlayers = async (names: string[]) => {
     const nextRoundNumber = rounds.length + 1;
-    const newItems: Player[] = names.map((name, i) => {
-      const colorIndex = (players.length + i) % AVATAR_COLORS.length;
-      return {
-        id: `p-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 4)}`,
-        name,
-        active: true,
-        avatarColor: AVATAR_COLORS[colorIndex],
-        joinedAtRound: nextRoundNumber,
-      };
-    });
+    const newMemberProfileIds: string[] = [];
+
+    const newItems: Player[] = await Promise.all(
+      names.map(async (name, i) => {
+        const trimmed = name.trim();
+        const colorIndex = (players.length + i) % AVATAR_COLORS.length;
+        const { playerProfileId } = await ensurePlayerProfileId(trimmed, {
+          avatarColor: AVATAR_COLORS[colorIndex],
+          clubId: activeClub?.id,
+        });
+
+        if (activeClub && !activeClub.memberProfileIds.includes(playerProfileId)) {
+          newMemberProfileIds.push(playerProfileId);
+        }
+
+        return {
+          id: `p-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 4)}`,
+          playerProfileId,
+          name: trimmed,
+          active: true,
+          avatarColor: AVATAR_COLORS[colorIndex],
+          joinedAtRound: nextRoundNumber,
+        };
+      })
+    );
+
     setPlayers((prev) => [...prev, ...newItems]);
+
+    if (activeClub && newMemberProfileIds.length > 0) {
+      const updatedClub: Club = {
+        ...activeClub,
+        memberProfileIds: Array.from(
+          new Set([...activeClub.memberProfileIds, ...newMemberProfileIds])
+        ),
+        updatedAt: Date.now(),
+      };
+      setActiveClub(updatedClub);
+      saveClubLocally(updatedClub);
+      saveClubToFirestore(updatedClub).catch(() => {});
+    }
 
     if (rounds.length > 0) {
       soundFx.playPointChime();
@@ -1823,6 +1920,8 @@ export default function App({
         onNavigateToOpenPlay={onNavigateToOpenPlay}
         hasActiveBracket={Boolean(bracket || doubleTournament)}
         hasActiveGroupStage={Boolean(groupStage)}
+        activeClub={activeClub}
+        onOpenClubModal={() => setShowClubModal(true)}
       />
 
       {/* Main Content Area */}
@@ -2150,6 +2249,20 @@ export default function App({
         onStartBracket={handleStartBracket}
         onRecordBracketResult={handleRecordBracketResult}
         onResetBracket={handleResetBracket}
+      />
+
+      <ClubModal
+        isOpen={showClubModal}
+        onClose={() => setShowClubModal(false)}
+        currentSessionId={sessionId}
+        onSwitchSession={(targetSessionId) => {
+          handleLoadSession(targetSessionId);
+          setShowClubModal(false);
+        }}
+        onNewSessionInClub={() => {
+          handleGenerateNewSession();
+          setShowClubModal(false);
+        }}
       />
     </div>
   );

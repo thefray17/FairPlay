@@ -1,5 +1,5 @@
 import React from 'react';
-import { FairnessMetric, SessionConfig } from '../types';
+import { FairnessMetric, SessionConfig, Club } from '../types';
 import {
   Trophy,
   LayoutGrid,
@@ -7,6 +7,7 @@ import {
   Users,
   Settings,
   ShieldCheck,
+  Shield,
   RotateCcw,
   Sparkles,
   Smartphone,
@@ -34,6 +35,8 @@ interface NavbarProps {
   onNavigateToOpenPlay?: () => void;
   hasActiveBracket?: boolean;
   hasActiveGroupStage?: boolean;
+  activeClub?: Club | null;
+  onOpenClubModal?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -51,6 +54,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onNavigateToOpenPlay,
   hasActiveBracket,
   hasActiveGroupStage,
+  activeClub,
+  onOpenClubModal,
 }) => {
   return (
     <header className="sticky top-0 z-30 bg-indigo-600 text-white shadow-md">
@@ -95,6 +100,42 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* PWA Install Button (auto-hides when standalone or unpromptable) */}
             <PWAInstallButton variant="navbar" />
+
+            {/* Club / Squad Button */}
+            {onOpenClubModal && (
+              <button
+                type="button"
+                id="btn-navbar-club"
+                onClick={onOpenClubModal}
+                className={`inline-flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-xl font-bold text-xs transition-all shadow-xs active:scale-95 cursor-pointer shrink-0 border ${
+                  activeClub
+                    ? 'bg-indigo-500/90 hover:bg-indigo-400 text-white border-indigo-300/40'
+                    : 'bg-indigo-700/60 hover:bg-indigo-700 text-indigo-200 border-indigo-500/40'
+                }`}
+                title={
+                  activeClub
+                    ? `Active Squad: ${activeClub.name} (PIN: ${activeClub.code})`
+                    : 'Join or Create a Club / Squad'
+                }
+                aria-label={
+                  activeClub
+                    ? `Active Squad: ${activeClub.name}`
+                    : 'Join or Create a Club / Squad'
+                }
+              >
+                <Shield className={`w-3.5 h-3.5 shrink-0 ${activeClub ? 'text-yellow-300' : 'text-indigo-300'}`} />
+                {activeClub ? (
+                  <>
+                    <span className="hidden md:inline max-w-[100px] truncate font-bold">{activeClub.name}</span>
+                    <span className="font-mono text-[10px] bg-indigo-900/50 px-1 py-0.5 rounded text-yellow-300 font-bold">
+                      {activeClub.code}
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-[11px] sm:text-xs">Squad</span>
+                )}
+              </button>
+            )}
 
             {/* Session ID & Transfer Handover Button */}
             <button

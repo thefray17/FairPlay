@@ -51,6 +51,9 @@ import {
 } from '../../utils/sessionSync';
 import { soundFx } from '../../utils/audio';
 import { ArrowRightLeft, Play, X, Zap, Users, AlertCircle } from 'lucide-react';
+import { ensurePlayerProfileId } from '../../utils/identitySync';
+import { updatePlayerProfilesMatchStats } from '../../lib/firebase';
+import { getActiveClub } from '../../utils/clubSync';
 
 interface OpenPlayPageProps {
   onNavigateToSocial: () => void;
@@ -1023,6 +1026,21 @@ export const OpenPlayPage: React.FC<OpenPlayPageProps> = ({
     let nextLosers = result.newLosersQueue;
     let nextBench = result.newRestingBench;
 
+    // Aggregating career stats across sessions into playerProfiles
+    const winnerProfiles: string[] = [];
+    const loserProfiles: string[] = [];
+    completedMatch.winnerIds?.forEach((pId) => {
+      const sp = (socialPlayers || []).find((p) => p.id === pId);
+      if (sp?.playerProfileId) winnerProfiles.push(sp.playerProfileId);
+    });
+    completedMatch.loserIds?.forEach((pId) => {
+      const sp = (socialPlayers || []).find((p) => p.id === pId);
+      if (sp?.playerProfileId) loserProfiles.push(sp.playerProfileId);
+    });
+    if (winnerProfiles.length > 0 || loserProfiles.length > 0) {
+      updatePlayerProfilesMatchStats(winnerProfiles, loserProfiles).catch(() => {});
+    }
+
     // Update history
     setHistory((prev) => [completedMatch, ...prev]);
 
@@ -1135,15 +1153,23 @@ export const OpenPlayPage: React.FC<OpenPlayPageProps> = ({
   // ----------------------------------------------------
   // Queue Management Handlers
   // ----------------------------------------------------
-  const handleAddPlayer = (name: string, targetBucket: 'winners' | 'losers' | 'bench' = 'bench') => {
+  const handleAddPlayer = async (name: string, targetBucket: 'winners' | 'losers' | 'bench' = 'bench') => {
     const trimmed = name.trim();
     if (!trimmed) return;
 
+    const activeClub = await getActiveClub();
+    const avatarColor = AVATAR_COLORS[(socialPlayers?.length || 0) % AVATAR_COLORS.length];
+    const { playerProfileId } = await ensurePlayerProfileId(trimmed, {
+      avatarColor,
+      clubId: activeClub?.id,
+    });
+
     const newPlayer: Player = {
       id: `p-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      playerProfileId,
       name: trimmed,
       active: true,
-      avatarColor: AVATAR_COLORS[(socialPlayers?.length || 0) % AVATAR_COLORS.length],
+      avatarColor,
       joinedAtRound: 1,
     };
 
@@ -1164,17 +1190,29 @@ export const OpenPlayPage: React.FC<OpenPlayPageProps> = ({
     } catch {}
   };
 
-  const handleBulkAddPlayers = (names: string[]) => {
+  const handleBulkAddPlayers = async (names: string[]) => {
     const trimmedNames = names.map((n) => n.trim()).filter((n) => n.length > 0);
     if (trimmedNames.length === 0) return;
 
-    const newPlayers: Player[] = trimmedNames.map((name, idx) => ({
-      id: `p-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
-      name,
-      active: true,
-      avatarColor: AVATAR_COLORS[((socialPlayers?.length || 0) + idx) % AVATAR_COLORS.length],
-      joinedAtRound: 1,
-    }));
+    const activeClub = await getActiveClub();
+    const newPlayers: Player[] = await Promise.all(
+      trimmedNames.map(async (name, idx) => {
+        const avatarColor =
+          AVATAR_COLORS[((socialPlayers?.length || 0) + idx) % AVATAR_COLORS.length];
+        const { playerProfileId } = await ensurePlayerProfileId(name, {
+          avatarColor,
+          clubId: activeClub?.id,
+        });
+        return {
+          id: `p-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
+          playerProfileId,
+          name,
+          active: true,
+          avatarColor,
+          joinedAtRound: 1,
+        };
+      })
+    );
 
     const newIds = newPlayers.map((p) => p.id);
     const nextSocial = [...(socialPlayers || []), ...newPlayers];

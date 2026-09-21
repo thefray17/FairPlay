@@ -5,6 +5,11 @@ import {
   doc,
   setDoc,
   getDoc,
+  getDocs,
+  query,
+  where,
+  updateDoc,
+  arrayUnion,
   onSnapshot,
   collection,
   serverTimestamp,
@@ -13,6 +18,7 @@ import {
 import { getAnalytics, isSupported } from 'firebase/analytics';
 import rawConfig from '../../firebase-applet-config.json';
 import { SessionData } from '../utils/sessionSync';
+import { Club, PlayerProfile } from '../types';
 
 // Merge with user-specified custom parameters like databaseURL and measurementId
 export const firebaseConfig = {
@@ -272,3 +278,284 @@ export async function getUserProfile(
     return { success: false, error: err?.message || 'Failed to fetch profile' };
   }
 }
+
+/**
+ * Save or update PlayerProfile document in Firestore
+ */
+export async function savePlayerProfileToFirestore(
+  profile: PlayerProfile
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!profile.id) return { success: false, error: 'Profile ID is required' };
+    const profileRef = doc(db, 'playerProfiles', profile.id);
+    const payload = cleanFirestoreData({
+      ...profile,
+      updatedAt: Date.now(),
+      createdAt: profile.createdAt || Date.now(),
+      matchesPlayed: profile.matchesPlayed ?? 0,
+      wins: profile.wins ?? 0,
+      losses: profile.losses ?? 0,
+    });
+    await setDoc(profileRef, payload, { merge: true });
+    return { success: true };
+  } catch (err: any) {
+    console.warn('savePlayerProfileToFirestore error:', err);
+    return { success: false, error: err?.message || 'Failed to save player profile' };
+  }
+}
+
+/**
+ * Fetch a PlayerProfile document by its unique ID
+ */
+export async function fetchPlayerProfileFromFirestore(
+  profileId: string
+): Promise<{ success: boolean; profile?: PlayerProfile; error?: string }> {
+  try {
+    const cleanId = profileId.trim();
+    if (!cleanId) return { success: false, error: 'Invalid profile ID' };
+    const profileRef = doc(db, 'playerProfiles', cleanId);
+    const snap = await getDoc(profileRef);
+    if (!snap.exists()) {
+      return { success: false, error: `Profile ${cleanId} not found` };
+    }
+    return { success: true, profile: snap.data() as PlayerProfile };
+  } catch (err: any) {
+    console.error('fetchPlayerProfileFromFirestore error:', err);
+    return { success: false, error: err?.message || 'Failed to fetch player profile' };
+  }
+}
+
+/**
+ * Fetch all player profiles from Firestore
+ */
+export async function fetchAllPlayerProfilesFromFirestore(): Promise<Record<string, PlayerProfile>> {
+  const result: Record<string, PlayerProfile> = {};
+  try {
+    const q = query(collection(db, 'playerProfiles'));
+    const snap = await getDocs(q);
+    snap.forEach((docSnap) => {
+      if (docSnap.exists()) {
+        result[docSnap.id] = docSnap.data() as PlayerProfile;
+      }
+    });
+  } catch (err) {
+    console.warn('fetchAllPlayerProfilesFromFirestore error:', err);
+  }
+  return result;
+}
+
+/**
+ * Batch fetch multiple player profiles by their IDs
+ */
+export async function fetchPlayerProfilesByIds(
+  profileIds: string[]
+): Promise<Record<string, PlayerProfile>> {
+  const result: Record<string, PlayerProfile> = {};
+  if (!profileIds || profileIds.length === 0) return result;
+
+  try {
+    const promises = profileIds.map(async (id) => {
+      if (!id) return;
+      const res = await fetchPlayerProfileFromFirestore(id);
+      if (res.success && res.profile) {
+        result[id] = res.profile;
+      }
+    });
+    await Promise.all(promises);
+  } catch (err) {
+    console.warn('Error batch fetching player profiles:', err);
+  }
+  return result;
+}
+
+/**
+ * Record completed match results directly into playerProfiles in Firestore,
+ * enabling cross-session career stats aggregation!
+ */
+export async function updatePlayerProfilesMatchStats(
+  winnerProfileIds: string[],
+  loserProfileIds: string[]
+): Promise<void> {
+  const allIds = Array.from(new Set([...winnerProfileIds, ...loserProfileIds])).filter(Boolean);
+  if (allIds.length === 0) return;
+
+  try {
+    await Promise.all(
+      allIds.map(async (pId) => {
+        const isWinner = winnerProfileIds.includes(pId);
+        const isLoser = loserProfileIds.includes(pId);
+        const snap = await getDoc(doc(db, 'playerProfiles', pId));
+        if (snap.exists()) {
+          const data = snap.data() as PlayerProfile;
+          await setDoc(
+            doc(db, 'playerProfiles', pId),
+            {
+              matchesPlayed: (data.matchesPlayed || 0) + 1,
+              wins: (data.wins || 0) + (isWinner ? 1 : 0),
+              losses: (data.losses || 0) + (isLoser ? 1 : 0),
+              updatedAt: Date.now(),
+            },
+            { merge: true }
+          );
+        }
+      })
+    );
+  } catch (err) {
+    console.warn('Failed to update player profiles match stats in Firestore:', err);
+  }
+}
+
+/**
+ * Save or update Club document in Firestore
+ */
+export async function saveClubToFirestore(
+  club: Club
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!club.id) return { success: false, error: 'Club ID is required' };
+    const clubRef = doc(db, 'clubs', club.id);
+    const payload = cleanFirestoreData({
+      ...club,
+      updatedAt: Date.now(),
+    });
+    await setDoc(clubRef, payload, { merge: true });
+    return { success: true };
+  } catch (err: any) {
+    console.warn('saveClubToFirestore error:', err);
+    return { success: false, error: err?.message || 'Failed to save club' };
+  }
+}
+
+/**
+ * Fetch a Club document by its unique ID
+ */
+export async function fetchClubFromFirestore(
+  clubId: string
+): Promise<{ success: boolean; club?: Club; error?: string }> {
+  try {
+    const cleanId = clubId.trim();
+    if (!cleanId) return { success: false, error: 'Invalid club ID' };
+    const clubRef = doc(db, 'clubs', cleanId);
+    const snap = await getDoc(clubRef);
+    if (!snap.exists()) {
+      return { success: false, error: `Club ${cleanId} not found` };
+    }
+    return { success: true, club: snap.data() as Club };
+  } catch (err: any) {
+    console.error('fetchClubFromFirestore error:', err);
+    return { success: false, error: err?.message || 'Failed to fetch club' };
+  }
+}
+
+/**
+ * Query a Club by its short 4-digit join code
+ */
+export async function fetchClubByCodeFromFirestore(
+  code: string
+): Promise<{ success: boolean; club?: Club; error?: string }> {
+  try {
+    const cleanCode = code.trim().toUpperCase();
+    if (!cleanCode) return { success: false, error: 'Join code is required' };
+    const clubsRef = collection(db, 'clubs');
+    const q = query(clubsRef, where('code', '==', cleanCode));
+    const querySnapshot = await getDocs(q);
+
+    if (querySnapshot.empty) {
+      return { success: false, error: `No club found with join code "${cleanCode}"` };
+    }
+
+    const docSnap = querySnapshot.docs[0];
+    return { success: true, club: docSnap.data() as Club };
+  } catch (err: any) {
+    console.error('fetchClubByCodeFromFirestore error:', err);
+    return { success: false, error: err?.message || 'Failed to look up club code' };
+  }
+}
+
+/**
+ * Real-time listener for a Club document
+ */
+export function subscribeToClubFirestore(
+  clubId: string,
+  onData: (club: Club) => void,
+  onError?: (error: Error) => void
+): Unsubscribe {
+  const cleanId = clubId.trim();
+  const clubRef = doc(db, 'clubs', cleanId);
+
+  return onSnapshot(
+    clubRef,
+    (snap) => {
+      if (snap.exists()) {
+        onData(snap.data() as Club);
+      }
+    },
+    (err) => {
+      console.warn('subscribeToClubFirestore error:', err);
+      if (onError) onError(err);
+    }
+  );
+}
+
+/**
+ * Attach a Session ID to a Club's sessionIds array
+ */
+export async function addSessionIdToClub(
+  clubId: string,
+  sessionId: string
+): Promise<boolean> {
+  try {
+    const cleanClubId = clubId.trim();
+    const cleanSessionId = sessionId.trim().toUpperCase();
+    if (!cleanClubId || !cleanSessionId) return false;
+
+    const clubRef = doc(db, 'clubs', cleanClubId);
+    await updateDoc(clubRef, {
+      sessionIds: arrayUnion(cleanSessionId),
+      updatedAt: Date.now(),
+    });
+    return true;
+  } catch (err) {
+    console.warn('addSessionIdToClub note:', err);
+    // If updateDoc failed because document needs creation or merge
+    try {
+      const fetchRes = await fetchClubFromFirestore(clubId);
+      if (fetchRes.success && fetchRes.club) {
+        const existing = fetchRes.club.sessionIds || [];
+        if (!existing.includes(sessionId)) {
+          await saveClubToFirestore({
+            ...fetchRes.club,
+            sessionIds: [...existing, sessionId],
+          });
+          return true;
+        }
+      }
+    } catch {}
+    return false;
+  }
+}
+
+/**
+ * Add a member profile ID to a Club's memberProfileIds array
+ */
+export async function addMemberProfileIdToClub(
+  clubId: string,
+  profileId: string
+): Promise<boolean> {
+  try {
+    const cleanClubId = clubId.trim();
+    const cleanProfileId = profileId.trim();
+    if (!cleanClubId || !cleanProfileId) return false;
+
+    const clubRef = doc(db, 'clubs', cleanClubId);
+    await updateDoc(clubRef, {
+      memberProfileIds: arrayUnion(cleanProfileId),
+      updatedAt: Date.now(),
+    });
+    return true;
+  } catch (err) {
+    console.warn('addMemberProfileIdToClub note:', err);
+    return false;
+  }
+}
+

@@ -41,8 +41,15 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Allow non-GET requests and API calls to pass through directly
-  if (event.request.method !== 'GET' || url.pathname.startsWith('/api/')) {
+  // Allow non-GET requests, API calls, and dev/vite module routes to pass through directly
+  if (
+    event.request.method !== 'GET' ||
+    url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/src/') ||
+    url.pathname.startsWith('/@') ||
+    url.pathname.startsWith('/node_modules/') ||
+    url.hostname !== self.location.hostname
+  ) {
     return;
   }
 

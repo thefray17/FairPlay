@@ -3,6 +3,7 @@ export type MatchFormat = 'doubles' | 'singles' | 'triples' | 'quads';
 
 export interface Player {
   id: string;
+  playerProfileId?: string; // Cross-session identity profile ID
   name: string;
   active: boolean; // whether player is available for upcoming rounds (can be temporarily paused for rest/injury)
   avatarColor: string;
@@ -10,6 +11,22 @@ export interface Player {
   joinedAtRound: number;
   duoPartnerId?: string | null; // Locked duo partner player ID (inseparable team)
   duprRating?: number | null;
+}
+
+export interface PlayerProfile {
+  id: string;
+  name: string;
+  authUid?: string;
+  avatarColor?: string;
+  gender?: 'M' | 'F';
+  skillLevel?: string;
+  rating?: number;
+  matchesPlayed: number;
+  wins: number;
+  losses: number;
+  clubIds?: string[];
+  createdAt?: number;
+  updatedAt?: number;
 }
 
 export type MatchStatus = 'pending' | 'in_progress' | 'completed';
@@ -211,6 +228,39 @@ export interface GroupDoubleBracketTournament {
     championId?: string; // or team representative ID
   };
 }
+
+/**
+ * Club / Squad layer for multi-session ownership and persistent player identity.
+ * A club owns many Session documents and tracks member player profiles.
+ */
+export interface Club {
+  id: string;
+  name: string;
+  code: string; // short join code (reuses the 4-digit PIN pattern from generateSessionId)
+  createdByUid?: string;
+  organizerToken?: string; // Private write token for club organizer
+  memberProfileIds: string[];
+  sessionIds: string[];
+  createdAt: number;
+  updatedAt?: number;
+  description?: string;
+  sport?: SportType;
+}
+
+export type SessionType = 'social' | 'open_play' | 'tournament';
+
+export interface UnifiedSessionCreationOptions {
+  sessionType: SessionType;
+  sessionName: string;
+  sport: SportType;
+  format: MatchFormat;
+  courtsCount: number;
+  targetPoints: number;
+  winByTwo: boolean;
+  clubId?: string;
+  initialPlayerProfileIds?: string[];
+}
+
 
 
 
