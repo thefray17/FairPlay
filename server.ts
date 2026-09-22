@@ -218,12 +218,6 @@ async function startServer() {
       sanitizedSession.openPlay = existing.openPlay;
     }
 
-    if (typeof body.clubId === 'string' && body.clubId.length <= 64) {
-      sanitizedSession.clubId = body.clubId;
-    } else if (existing?.clubId !== undefined) {
-      sanitizedSession.clubId = existing.clubId;
-    }
-
     if (typeof body.deviceOrigin === 'string' && body.deviceOrigin.length <= 256) {
       sanitizedSession.deviceOrigin = body.deviceOrigin;
     } else if (existing?.deviceOrigin !== undefined) {

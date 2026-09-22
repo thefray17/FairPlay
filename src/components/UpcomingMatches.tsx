@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Player, UpcomingMatch } from '../types';
 import { EditLineupModal } from './EditLineupModal';
-import { getDevicePlayerProfile } from '../utils/identitySync';
 import {
   CalendarClock,
   Edit3,
@@ -66,7 +65,6 @@ export const UpcomingMatches: React.FC<UpcomingMatchesProps> = ({
 
       {/* Matches Grid */}
       {(() => {
-        const deviceProfile = getDevicePlayerProfile();
         const maxGP = allActivePlayers.length > 0
           ? Math.max(0, ...allActivePlayers.map((p) => playerMatchCounts[p.id] || 0))
           : 0;
@@ -78,38 +76,27 @@ export const UpcomingMatches: React.FC<UpcomingMatchesProps> = ({
               const team1 = match.team1PlayerIds.map((id) => playersMap[id]).filter(Boolean);
               const team2 = match.team2PlayerIds.map((id) => playersMap[id]).filter(Boolean);
 
-              const userIsInMatch = !!(
-                deviceProfile?.id &&
-                [...team1, ...team2].some(
-                  (p) => p.playerProfileId === deviceProfile.id || p.id === deviceProfile.id || p.name.toLowerCase() === deviceProfile.name.toLowerCase()
-                )
-              );
-
               return (
                 <div
                   key={`upcoming-match-${match.matchNumber}`}
                   id={`upcoming-match-card-${match.matchNumber}`}
-                  className={`rounded-2xl p-4.5 border transition-all relative ${
-                    userIsInMatch
-                      ? 'ring-2 ring-yellow-400 bg-indigo-900 text-white border-yellow-400/80 shadow-lg'
-                      : isNext
+                  className={`rounded-2xl p-4.5 border transition-all ${
+                    isNext
                       ? 'bg-indigo-900 text-white border-indigo-800 shadow-md ring-2 ring-indigo-500/20'
                       : 'bg-slate-50 text-slate-900 border-slate-200 shadow-xs'
                   }`}
                 >
                   {/* Card Top */}
                   <div className="flex items-center justify-between pb-3 mb-3 border-b border-white/10">
-                    <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-2">
                       <span
                         className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                          userIsInMatch
-                            ? 'bg-yellow-400 text-indigo-950 font-black animate-pulse'
-                            : isNext
+                          isNext
                             ? 'bg-yellow-400 text-indigo-950 font-black'
                             : 'bg-slate-200 text-slate-700 font-bold'
                         }`}
                       >
-                        {userIsInMatch ? '👉 YOUR NEXT MATCH' : isNext ? '★ On-Deck (Next Match)' : 'In The Hole (Match 2)'}
+                        {isNext ? '★ On-Deck (Next Match)' : 'In The Hole (Match 2)'}
                       </span>
                       {match.isOverridden && (
                         <span className="text-[10px] font-bold text-amber-300 bg-amber-950/60 px-2 py-0.5 rounded-md border border-amber-500/30">
@@ -203,10 +190,6 @@ export const UpcomingMatches: React.FC<UpcomingMatchesProps> = ({
                             {team1.map((player, pIdx) => {
                               const gp = playerMatchCounts[player.id] || 0;
                               const isCatchUp = maxGP > 0 && gp < maxGP && ((player.joinedAtRound || 1) > 1 || gp <= maxGP - 1);
-                              const isPlayerUser = !!(
-                                deviceProfile?.id &&
-                                (player.playerProfileId === deviceProfile.id || player.id === deviceProfile.id || player.name.toLowerCase() === deviceProfile.name.toLowerCase())
-                              );
                               return (
                                 <div key={`um-t1-${match.matchNumber}-${player.id}-${pIdx}`} className="flex items-center gap-2">
                                   <span
@@ -215,14 +198,7 @@ export const UpcomingMatches: React.FC<UpcomingMatchesProps> = ({
                                     {player.name.charAt(0)}
                                   </span>
                                   <div className="truncate min-w-0">
-                                    <div className="flex items-center gap-1">
-                                      <span className="text-xs font-bold truncate">{player.name}</span>
-                                      {isPlayerUser && (
-                                        <span className="text-[8px] px-1 py-0.2 rounded-full bg-yellow-400 text-indigo-950 font-black shrink-0">
-                                          YOU
-                                        </span>
-                                      )}
-                                    </div>
+                                    <span className="text-xs font-bold block truncate">{player.name}</span>
                                     <div className="flex items-center gap-1 flex-wrap">
                                       <span
                                         className={`text-[9px] font-semibold ${
@@ -302,10 +278,6 @@ export const UpcomingMatches: React.FC<UpcomingMatchesProps> = ({
                             {team2.map((player, pIdx) => {
                               const gp = playerMatchCounts[player.id] || 0;
                               const isCatchUp = maxGP > 0 && gp < maxGP && ((player.joinedAtRound || 1) > 1 || gp <= maxGP - 1);
-                              const isPlayerUser = !!(
-                                deviceProfile?.id &&
-                                (player.playerProfileId === deviceProfile.id || player.id === deviceProfile.id || player.name.toLowerCase() === deviceProfile.name.toLowerCase())
-                              );
                               return (
                                 <div key={`um-t2-${match.matchNumber}-${player.id}-${pIdx}`} className="flex items-center gap-2">
                                   <span
@@ -314,14 +286,7 @@ export const UpcomingMatches: React.FC<UpcomingMatchesProps> = ({
                                     {player.name.charAt(0)}
                                   </span>
                                   <div className="truncate min-w-0">
-                                    <div className="flex items-center gap-1">
-                                      <span className="text-xs font-bold truncate">{player.name}</span>
-                                      {isPlayerUser && (
-                                        <span className="text-[8px] px-1 py-0.2 rounded-full bg-yellow-400 text-indigo-950 font-black shrink-0">
-                                          YOU
-                                        </span>
-                                      )}
-                                    </div>
+                                    <span className="text-xs font-bold block truncate">{player.name}</span>
                                     <div className="flex items-center gap-1 flex-wrap">
                                       <span
                                         className={`text-[9px] font-semibold ${

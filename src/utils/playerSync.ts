@@ -179,7 +179,6 @@ export function convertSocialToOpenPlay(
 ): OpenPlayPlayer {
   return {
     id: player.id,
-    playerProfileId: player.playerProfileId || existing?.playerProfileId,
     name: player.name,
     avatarColor: player.avatarColor || AVATAR_COLORS[0],
     joinedQueueAt: existing?.joinedQueueAt || Date.now() + (queueIndex ?? 0) * 10,
@@ -211,7 +210,6 @@ export function convertOpenPlayToSocial(
 ): Player {
   return {
     id: opPlayer.id,
-    playerProfileId: opPlayer.playerProfileId || existing?.playerProfileId,
     name: opPlayer.name,
     active: opPlayer.status !== 'paused',
     avatarColor: opPlayer.avatarColor,

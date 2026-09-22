@@ -3,30 +3,12 @@ export type MatchFormat = 'doubles' | 'singles' | 'triples' | 'quads';
 
 export interface Player {
   id: string;
-  playerProfileId?: string; // Cross-session identity profile ID
   name: string;
   active: boolean; // whether player is available for upcoming rounds (can be temporarily paused for rest/injury)
   avatarColor: string;
   notes?: string;
   joinedAtRound: number;
   duoPartnerId?: string | null; // Locked duo partner player ID (inseparable team)
-  duprRating?: number | null;
-}
-
-export interface PlayerProfile {
-  id: string;
-  name: string;
-  authUid?: string;
-  avatarColor?: string;
-  gender?: 'M' | 'F';
-  skillLevel?: string;
-  rating?: number;
-  matchesPlayed: number;
-  wins: number;
-  losses: number;
-  clubIds?: string[];
-  createdAt?: number;
-  updatedAt?: number;
 }
 
 export type MatchStatus = 'pending' | 'in_progress' | 'completed';
@@ -91,18 +73,6 @@ export interface UpcomingMatch {
   isOverridden?: boolean;
 }
 
-export type TournamentFormatType = 'round_robin' | 'round_robin_to_bracket' | 'group_double_bracket';
-
-export interface TournamentModeConfig {
-  enabled: boolean;
-  totalRounds: number; // fixed round count, decided at start
-  locked: boolean; // true once the tournament has started
-  completedAt?: number; // set when finalized
-  bracketCutoff?: number; // e.g. top 4 or top 8 advance to the bracket
-  tournamentFormat?: TournamentFormatType;
-  finalsFormat?: 'single_final' | 'true_double_elim';
-}
-
 export interface SessionConfig {
   sessionName: string;
   sport: SportType;
@@ -112,7 +82,6 @@ export interface SessionConfig {
   targetPoints: number; // e.g. 21 for badminton, 11 for pickleball
   winByTwo: boolean;
   allowDraw: boolean;
-  tournamentMode?: TournamentModeConfig;
 }
 
 export interface FairnessMetric {
@@ -174,93 +143,3 @@ export interface TeamVsTeamRecord {
   winRateTeam2: number;
   matches: TeamMatchInstance[];
 }
-
-export interface BracketSlot {
-  seed: number;
-  playerIds: string[]; // 1 player for singles, 2 for doubles
-  isBye?: boolean;
-}
-
-export interface BracketMatch {
-  id: string;
-  round: number;          // 1 = first round, increases toward the final
-  position: number;       // slot within that round, left-to-right
-  slotA: BracketSlot | null;
-  slotB: BracketSlot | null;
-  score1?: number;
-  score2?: number;
-  winnerSlot?: 'A' | 'B';
-  nextMatchId?: string;   // which match the winner advances into
-  nextMatchSlot?: 'A' | 'B';
-}
-
-export interface Bracket {
-  id: string;
-  createdAt: number;
-  size: number;           // bracket size, next power of 2 >= entrant count
-  matches: BracketMatch[];
-  championPlayerIds?: string[];
-}
-
-export interface TournamentGroup {
-  id: string;
-  label: string;             // "Group A", "Group B", etc.
-  entrantIds: string[];      // player IDs (or team-representative IDs for doubles)
-  rounds: Round[];           // reuse the existing Round/Match shape, scoped to just this group's matches
-  standings?: StandingsRow[]; // filled in once matches are scored
-}
-
-export interface GroupStage {
-  id: string;
-  groups: TournamentGroup[];
-  completedAt?: number;
-  finalsFormat?: 'single_final' | 'true_double_elim';
-}
-
-export interface GroupDoubleBracketTournament {
-  groupStage: GroupStage;
-  winnersBracket: Bracket;
-  losersBracket: Bracket;
-  finalsFormat: 'single_final' | 'true_double_elim';
-  grandFinal?: {
-    match1?: { score1?: number; score2?: number; winner?: 'winners' | 'losers' };
-    resetMatch?: { score1?: number; score2?: number; winner?: 'winners' | 'losers' };
-    championId?: string; // or team representative ID
-  };
-}
-
-/**
- * Club / Squad layer for multi-session ownership and persistent player identity.
- * A club owns many Session documents and tracks member player profiles.
- */
-export interface Club {
-  id: string;
-  name: string;
-  code: string; // short join code (reuses the 4-digit PIN pattern from generateSessionId)
-  createdByUid?: string;
-  organizerToken?: string; // Private write token for club organizer
-  memberProfileIds: string[];
-  sessionIds: string[];
-  createdAt: number;
-  updatedAt?: number;
-  description?: string;
-  sport?: SportType;
-}
-
-export type SessionType = 'social' | 'open_play' | 'tournament';
-
-export interface UnifiedSessionCreationOptions {
-  sessionType: SessionType;
-  sessionName: string;
-  sport: SportType;
-  format: MatchFormat;
-  courtsCount: number;
-  targetPoints: number;
-  winByTwo: boolean;
-  clubId?: string;
-  initialPlayerProfileIds?: string[];
-}
-
-
-
-

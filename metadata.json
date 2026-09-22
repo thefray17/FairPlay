@@ -1,6 +1,6 @@
 {
   "name": "FairPlay",
-  "description": "Smart badminton & pickleball session manager with fair rotation, fixed-length round-robin tournaments, 3-bucket open play, group stage pools, and dual-bracket playoff tournaments.",
+  "description": "3-Bucket Open Play matchmaking (Winners Queue, Losers Queue, Resting Bench) with automatic court dispatch, bench rotation, and 1+4 vs 2+3 partner splits.",
   "requestFramePermissions": [
     "camera"
   ],

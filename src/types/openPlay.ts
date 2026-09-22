@@ -1,6 +1,5 @@
 export interface OpenPlayPlayer {
   id: string;
-  playerProfileId?: string; // Cross-session identity profile ID
   name: string;
   avatarColor: string;
   joinedQueueAt: number;

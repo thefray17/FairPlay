@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Player, PlayerProfile } from './types';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
+import { Player } from './types';
 import { INITIAL_PLAYERS } from './utils/sampleData';
 import { SOCIAL_STORAGE_KEYS, emitRosterSync } from './utils/playerSync';
 import { OPENPLAY_STORAGE_KEYS } from './utils/openPlay';
@@ -13,15 +13,11 @@ import {
   SESSION_LOADED_EVENT,
   SessionData,
 } from './utils/sessionSync';
-import { ensureFirebaseAuth } from './lib/firebase';
-import {
-  getDevicePlayerProfile,
-  hasBeenPromptedForIdentity,
-  IDENTITY_UPDATED_EVENT,
-} from './utils/identitySync';
-import { IdentitySetupModal } from './components/IdentitySetupModal';
-import App from './App';
-import { OpenPlayPage } from './components/openplay/OpenPlayPage';
+
+const App = lazy(() => import('./App'));
+const OpenPlayPage = lazy(() =>
+  import('./components/openplay/OpenPlayPage').then((m) => ({ default: m.OpenPlayPage }))
+);
 
 export function Root() {
   const [currentPath, setCurrentPath] = useState<string>(() => {
@@ -96,40 +92,6 @@ export function Root() {
     setOrganizerToken(newId, token);
     return newId;
   });
-
-  // Device Player Profile & Silent Anonymous Auth
-  const [showIdentityPrompt, setShowIdentityPrompt] = useState<boolean>(false);
-  const [deviceProfile, setDeviceProfile] = useState<PlayerProfile | null>(() => getDevicePlayerProfile());
-
-  useEffect(() => {
-    // 1. Silently authenticate anonymously via Firebase on initial launch
-    ensureFirebaseAuth().catch((err) => {
-      console.warn('Anonymous auth initialization:', err);
-    });
-
-    // 2. Check if this device has been prompted for a display name yet
-    const existing = getDevicePlayerProfile();
-    const alreadyPrompted = hasBeenPromptedForIdentity();
-    if (!existing && !alreadyPrompted) {
-      setShowIdentityPrompt(true);
-    }
-
-    const handleIdentityUpdated = (e: any) => {
-      if (e?.detail?.profile) {
-        setDeviceProfile(e.detail.profile);
-      }
-    };
-
-    window.addEventListener(IDENTITY_UPDATED_EVENT, handleIdentityUpdated);
-    return () => {
-      window.removeEventListener(IDENTITY_UPDATED_EVENT, handleIdentityUpdated);
-    };
-  }, []);
-
-  const handleIdentityComplete = (profile: PlayerProfile) => {
-    setDeviceProfile(profile);
-    setShowIdentityPrompt(false);
-  };
 
   // Auto-fetch if opened with a session link or QR code from another device
   useEffect(() => {
@@ -289,13 +251,14 @@ export function Root() {
   const isOpenPlay = currentPath.toLowerCase().startsWith('/openplay');
 
   return (
-    <>
-      <IdentitySetupModal
-        isOpen={showIdentityPrompt}
-        onComplete={handleIdentityComplete}
-        onClose={() => setShowIdentityPrompt(false)}
-      />
-
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-center text-white">
+          <div className="w-10 h-10 border-3 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4" />
+          <p className="text-slate-400 font-medium text-sm">Loading court view...</p>
+        </div>
+      }
+    >
       {isOpenPlay ? (
         <OpenPlayPage
           onNavigateToSocial={() => navigateTo('/')}
@@ -314,6 +277,6 @@ export function Root() {
           setSessionId={setSessionId}
         />
       )}
-    </>
+    </Suspense>
   );
 }

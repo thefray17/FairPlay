@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Player, Round, SessionConfig, UpcomingMatch, Bracket, GroupStage, GroupDoubleBracketTournament, Club } from './types';
+import { Player, Round, SessionConfig, UpcomingMatch } from './types';
 import { DEFAULT_CONFIG, INITIAL_PLAYERS, AVATAR_COLORS } from './utils/sampleData';
 import {
   calculateFairnessMetric,
@@ -20,21 +20,10 @@ import {
   sanitizeRounds,
 } from './utils/fairRotation';
 import { calculateStandings } from './utils/standings';
-import {
-  seedEntrants,
-  generateBracket,
-  recordBracketResult,
-  generateGroupDoubleBracketTournament,
-  recordGrandFinalResult,
-  SeedingMethod,
-  DoublesPairingMethod,
-} from './utils/bracket';
 import { Navbar, TabType } from './components/Navbar';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { ActiveRoundView } from './components/ActiveRoundView';
 import { StandingsView } from './components/StandingsView';
-import { GroupStageView } from './components/GroupStageView';
-import { BracketView } from './components/BracketView';
 import { HistoryView } from './components/HistoryView';
 import { PlayersView } from './components/PlayersView';
 import { FairnessModal } from './components/FairnessModal';
@@ -42,11 +31,6 @@ import { SessionConfigModal } from './components/SessionConfigModal';
 import { ResetSessionModal } from './components/ResetSessionModal';
 import { OnboardingModal } from './components/OnboardingModal';
 import { TransferSessionModal } from './components/TransferSessionModal';
-import { TournamentCompleteModal } from './components/TournamentCompleteModal';
-import { ClubModal } from './components/ClubModal';
-import { getActiveClub, CLUB_UPDATED_EVENT, saveClubLocally } from './utils/clubSync';
-import { ensurePlayerProfileId, getDevicePlayerProfile } from './utils/identitySync';
-import { updatePlayerProfilesMatchStats, saveClubToFirestore } from './lib/firebase';
 import {
   generateSessionId,
   generateOrganizerToken,
@@ -87,9 +71,6 @@ const STORAGE_KEYS = {
   UPCOMING: 'fairclub_upcoming_v1',
   ONBOARDED: 'fairclub_onboarded_v1',
   SESSION_ID: 'fairclub_session_id_v1',
-  BRACKET: 'fairclub_bracket_v1',
-  GROUP_STAGE: 'fairclub_group_stage_v1',
-  DOUBLE_TOURNAMENT: 'fairclub_double_tournament_v1',
 };
 
 export default function App({
@@ -146,80 +127,10 @@ export default function App({
     }
   });
 
-  const [bracket, setBracket] = useState<Bracket | null>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.BRACKET);
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
-
-  const [groupStage, setGroupStage] = useState<GroupStage | null>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.GROUP_STAGE);
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
-
-  // Sync groupStage to localStorage
-  useEffect(() => {
-    try {
-      if (groupStage) {
-        localStorage.setItem(STORAGE_KEYS.GROUP_STAGE, JSON.stringify(groupStage));
-      } else {
-        localStorage.removeItem(STORAGE_KEYS.GROUP_STAGE);
-      }
-    } catch {}
-  }, [groupStage]);
-
-  const [doubleTournament, setDoubleTournament] = useState<GroupDoubleBracketTournament | null>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.DOUBLE_TOURNAMENT);
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
-
-  // Sync doubleTournament to localStorage
-  useEffect(() => {
-    try {
-      if (doubleTournament) {
-        localStorage.setItem(STORAGE_KEYS.DOUBLE_TOURNAMENT, JSON.stringify(doubleTournament));
-      } else {
-        localStorage.removeItem(STORAGE_KEYS.DOUBLE_TOURNAMENT);
-      }
-    } catch {}
-  }, [doubleTournament]);
-
   const [currentTab, setCurrentTab] = useState<TabType>('active');
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [showResetModal, setShowResetModal] = useState(false);
   const [showFairnessModal, setShowFairnessModal] = useState(false);
-  const [showClubModal, setShowClubModal] = useState(false);
-  const [activeClub, setActiveClub] = useState<Club | null>(null);
-
-  // Load and listen for active club updates
-  useEffect(() => {
-    getActiveClub().then((club) => {
-      setActiveClub(club);
-    });
-
-    const handleClubEvent = () => {
-      getActiveClub().then((club) => {
-        setActiveClub(club);
-      });
-    };
-
-    window.addEventListener(CLUB_UPDATED_EVENT, handleClubEvent);
-    return () => {
-      window.removeEventListener(CLUB_UPDATED_EVENT, handleClubEvent);
-    };
-  }, []);
-
   const [showOnboarding, setShowOnboarding] = useState<boolean>(() => {
     try {
       const onboarded = localStorage.getItem(STORAGE_KEYS.ONBOARDED);
@@ -292,7 +203,6 @@ export default function App({
   const setSessionId = externalSetSessionId || setInternalSessionId;
 
   const [showTransferModal, setShowTransferModal] = useState(false);
-  const [showTournamentCompleteModal, setShowTournamentCompleteModal] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
   const [transferToast, setTransferToast] = useState<{
@@ -378,9 +288,6 @@ export default function App({
           setUpcomingMatches(s.upcomingMatches);
         }
         if (s.id) setSessionId(s.id);
-        if (s.bracket !== undefined) {
-          setBracket(s.bracket);
-        }
         if (s.updatedAt) setLastSyncedAt(s.updatedAt);
         setShowOnboarding(false);
 
@@ -474,16 +381,6 @@ export default function App({
       localStorage.setItem(STORAGE_KEYS.ROUNDS, JSON.stringify(rounds));
     } catch {}
   }, [rounds]);
-
-  useEffect(() => {
-    try {
-      if (bracket) {
-        localStorage.setItem(STORAGE_KEYS.BRACKET, JSON.stringify(bracket));
-      } else {
-        localStorage.removeItem(STORAGE_KEYS.BRACKET);
-      }
-    } catch {}
-  }, [bracket]);
 
   useEffect(() => {
     setRounds((prevRounds) => sanitizeRounds(prevRounds, players));
@@ -717,90 +614,8 @@ export default function App({
 
   const currentRound = rounds.length > 0 ? rounds[activeRoundIndex] : null;
 
-  // Monitor tournament completion
-  useEffect(() => {
-    if (
-      config.tournamentMode?.enabled &&
-      config.tournamentMode.totalRounds > 0 &&
-      rounds.length >= config.tournamentMode.totalRounds
-    ) {
-      const allRoundsDone =
-        rounds.length > 0 &&
-        rounds.every(
-          (r) => r.completed || (r.matches.length > 0 && r.matches.every((m) => m.completed))
-        );
-      if (allRoundsDone && !config.tournamentMode.completedAt) {
-        const now = Date.now();
-        setConfig((prev) => ({
-          ...prev,
-          tournamentMode: {
-            ...prev.tournamentMode!,
-            completedAt: now,
-          },
-        }));
-        setShowTournamentCompleteModal(true);
-        soundFx.playVictoryFanfare();
-        try {
-          confetti({
-            particleCount: 120,
-            spread: 90,
-            origin: { y: 0.5 },
-          });
-        } catch {}
-      }
-    }
-  }, [rounds, config.tournamentMode]);
-
-  const handleRunExtraTournamentRound = () => {
-    setConfig((prev) => ({
-      ...prev,
-      tournamentMode: {
-        ...prev.tournamentMode!,
-        totalRounds: (prev.tournamentMode?.totalRounds || rounds.length) + 1,
-        completedAt: undefined,
-      },
-    }));
-    setShowTournamentCompleteModal(false);
-    handleGenerateNextRound();
-  };
-
-  const handleStartNewTournament = () => {
-    setShowTournamentCompleteModal(false);
-    handleResetSession();
-    setShowOnboarding(true);
-  };
-
-  const handleExitTournamentMode = () => {
-    setConfig((prev) => ({
-      ...prev,
-      tournamentMode: {
-        enabled: false,
-        totalRounds: 0,
-        locked: false,
-        completedAt: undefined,
-      },
-    }));
-    setShowTournamentCompleteModal(false);
-    setReplacementNotice({
-      id: `exit-tournament-${Date.now()}`,
-      title: 'Tournament Mode Concluded',
-      description: 'Switched to Casual Open Rotation. You can continue playing casual rounds freely.',
-      type: 'replacement',
-    });
-  };
-
   // Generate Next Fair Round
   const handleGenerateNextRound = () => {
-    if (config.tournamentMode?.enabled && !config.tournamentMode.locked) {
-      setConfig((prev) => ({
-        ...prev,
-        tournamentMode: {
-          ...prev.tournamentMode!,
-          locked: true,
-        },
-      }));
-    }
-
     const onDeck = upcomingMatches.find((m) => m.matchNumber === 1);
     const newRound = generateNextFairRound({
       players,
@@ -1131,27 +946,6 @@ export default function App({
         if (match.score1 > match.score2) winner = 1;
         else if (match.score2 > match.score1) winner = 2;
 
-        // Cross-session stats aggregation across sessions
-        const t1Profiles = match.team1.playerIds
-          .map((id) => players.find((p) => p.id === id)?.playerProfileId)
-          .filter(Boolean) as string[];
-        const t2Profiles = match.team2.playerIds
-          .map((id) => players.find((p) => p.id === id)?.playerProfileId)
-          .filter(Boolean) as string[];
-
-        let winners: string[] = [];
-        let losers: string[] = [];
-        if (winner === 1) {
-          winners = t1Profiles;
-          losers = t2Profiles;
-        } else if (winner === 2) {
-          winners = t2Profiles;
-          losers = t1Profiles;
-        }
-        if (winners.length > 0 || losers.length > 0) {
-          updatePlayerProfilesMatchStats(winners, losers).catch(() => {});
-        }
-
         updatedMatches[matchIndex] = {
           ...match,
           status: 'completed',
@@ -1262,93 +1056,42 @@ export default function App({
   };
 
   // Player Management
-  const handleAddPlayer = async (name: string) => {
-    const trimmed = name.trim();
-    if (!trimmed) return;
+  const handleAddPlayer = (name: string) => {
     const colorIndex = players.length % AVATAR_COLORS.length;
     const nextRoundNumber = rounds.length + 1;
-
-    // Cross-session player profile identity
-    const { playerProfileId } = await ensurePlayerProfileId(trimmed, {
-      avatarColor: AVATAR_COLORS[colorIndex],
-      clubId: activeClub?.id,
-    });
-
     const newPlayer: Player = {
       id: `p-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-      playerProfileId,
-      name: trimmed,
+      name,
       active: true,
       avatarColor: AVATAR_COLORS[colorIndex],
       joinedAtRound: nextRoundNumber,
     };
     setPlayers((prev) => [...prev, newPlayer]);
 
-    // If session is owned by a club, add this playerProfileId to club members
-    if (activeClub && !activeClub.memberProfileIds.includes(playerProfileId)) {
-      const updatedClub: Club = {
-        ...activeClub,
-        memberProfileIds: [...activeClub.memberProfileIds, playerProfileId],
-        updatedAt: Date.now(),
-      };
-      setActiveClub(updatedClub);
-      saveClubLocally(updatedClub);
-      saveClubToFirestore(updatedClub).catch(() => {});
-    }
-
     if (rounds.length > 0) {
       soundFx.playPointChime();
       setReplacementNotice({
         id: `late-player-${Date.now()}`,
-        title: `Late Joiner: ${trimmed}`,
+        title: `Late Joiner: ${name}`,
         description: `Prioritized to play FIRST in Round ${nextRoundNumber} with catch-up match scheduling.`,
         type: 'replacement',
       });
     }
   };
 
-  const handleBulkAddPlayers = async (names: string[]) => {
+  const handleBulkAddPlayers = (names: string[]) => {
     const nextRoundNumber = rounds.length + 1;
-    const newMemberProfileIds: string[] = [];
-
-    const newItems: Player[] = await Promise.all(
-      names.map(async (name, i) => {
-        const trimmed = name.trim();
-        const colorIndex = (players.length + i) % AVATAR_COLORS.length;
-        const { playerProfileId } = await ensurePlayerProfileId(trimmed, {
-          avatarColor: AVATAR_COLORS[colorIndex],
-          clubId: activeClub?.id,
-        });
-
-        if (activeClub && !activeClub.memberProfileIds.includes(playerProfileId)) {
-          newMemberProfileIds.push(playerProfileId);
-        }
-
-        return {
-          id: `p-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 4)}`,
-          playerProfileId,
-          name: trimmed,
-          active: true,
-          avatarColor: AVATAR_COLORS[colorIndex],
-          joinedAtRound: nextRoundNumber,
-        };
-      })
-    );
-
-    setPlayers((prev) => [...prev, ...newItems]);
-
-    if (activeClub && newMemberProfileIds.length > 0) {
-      const updatedClub: Club = {
-        ...activeClub,
-        memberProfileIds: Array.from(
-          new Set([...activeClub.memberProfileIds, ...newMemberProfileIds])
-        ),
-        updatedAt: Date.now(),
+    const newItems: Player[] = names.map((name, i) => {
+      const colorIndex = (players.length + i) % AVATAR_COLORS.length;
+      return {
+        id: `p-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 4)}`,
+        name,
+        active: true,
+        avatarColor: AVATAR_COLORS[colorIndex],
+        joinedAtRound: nextRoundNumber,
       };
-      setActiveClub(updatedClub);
-      saveClubLocally(updatedClub);
-      saveClubToFirestore(updatedClub).catch(() => {});
-    }
+    });
+    setPlayers((prev) => [...prev, ...newItems]);
 
     if (rounds.length > 0) {
       soundFx.playPointChime();
@@ -1762,13 +1505,7 @@ export default function App({
       setRounds([]);
       setSelectedRoundNumber(null);
       setReplacementNotice(null);
-      setBracket(null);
-      setGroupStage(null);
-      setDoubleTournament(null);
       localStorage.removeItem(STORAGE_KEYS.ROUNDS);
-      localStorage.removeItem(STORAGE_KEYS.BRACKET);
-      localStorage.removeItem(STORAGE_KEYS.GROUP_STAGE);
-      localStorage.removeItem(STORAGE_KEYS.DOUBLE_TOURNAMENT);
       const fresh = predictNextTwoMatches({
         players,
         rounds: [],
@@ -1790,116 +1527,14 @@ export default function App({
       setSelectedRoundNumber(null);
       setUpcomingMatches([]);
       setReplacementNotice(null);
-      setBracket(null);
-      setGroupStage(null);
-      setDoubleTournament(null);
       localStorage.removeItem(STORAGE_KEYS.PLAYERS);
       localStorage.removeItem(SOCIAL_STORAGE_KEYS.PLAYERS);
       localStorage.removeItem(STORAGE_KEYS.ROUNDS);
       localStorage.removeItem(STORAGE_KEYS.UPCOMING);
-      localStorage.removeItem(STORAGE_KEYS.BRACKET);
-      localStorage.removeItem(STORAGE_KEYS.GROUP_STAGE);
-      localStorage.removeItem(STORAGE_KEYS.DOUBLE_TOURNAMENT);
       emitRosterSync('social', []);
     } catch (err) {
       console.error('Failed to clear roster', err);
     }
-  };
-
-  // Bracket Mode Handlers
-  const handleStartBracket = (
-    method: SeedingMethod,
-    format: 'singles' | 'doubles',
-    doublesPairingMethod: DoublesPairingMethod,
-    selectedPlayerIds?: string[]
-  ) => {
-    const candidatePlayers =
-      selectedPlayerIds && selectedPlayerIds.length > 0
-        ? players.filter((p) => selectedPlayerIds.includes(p.id))
-        : players;
-
-    const entrants = seedEntrants(
-      candidatePlayers,
-      method,
-      standings,
-      {
-        format,
-        doublesPairingMethod,
-      }
-    );
-
-    const newBracket = generateBracket(entrants);
-
-    setBracket(newBracket);
-    setCurrentTab('bracket');
-    soundFx.playWhistle();
-  };
-
-  const handleRecordBracketResult = (matchId: string, score1: number, score2: number) => {
-    if (!bracket) return;
-    const updated = recordBracketResult(bracket, matchId, score1, score2);
-    setBracket(updated);
-    if (updated.championPlayerIds && updated.championPlayerIds.length > 0) {
-      soundFx.playVictoryFanfare();
-    }
-  };
-
-  const handleResetBracket = () => {
-    setBracket(null);
-    soundFx.playPointChime();
-  };
-
-  // Group Stage & Double Bracket Handlers
-  const handleUpdateGroupStage = (updatedStage: GroupStage | null) => {
-    setGroupStage(updatedStage);
-    if (updatedStage && updatedStage.completedAt) {
-      const finalsFormat = config.tournamentMode?.finalsFormat || 'single_final';
-      const dt = generateGroupDoubleBracketTournament(updatedStage, players, config, finalsFormat);
-      setDoubleTournament(dt);
-    } else if (!updatedStage) {
-      setDoubleTournament(null);
-    }
-  };
-
-  const handleRecordDoubleBracketResult = (
-    bracketType: 'winners' | 'losers',
-    matchId: string,
-    score1: number,
-    score2: number
-  ) => {
-    if (!doubleTournament) return;
-    const targetBracket =
-      bracketType === 'winners' ? doubleTournament.winnersBracket : doubleTournament.losersBracket;
-    const updatedTargetBracket = recordBracketResult(targetBracket, matchId, score1, score2);
-
-    const updatedTournament: GroupDoubleBracketTournament = {
-      ...doubleTournament,
-      winnersBracket: bracketType === 'winners' ? updatedTargetBracket : doubleTournament.winnersBracket,
-      losersBracket: bracketType === 'losers' ? updatedTargetBracket : doubleTournament.losersBracket,
-    };
-    setDoubleTournament(updatedTournament);
-
-    if (updatedTargetBracket.championPlayerIds && updatedTargetBracket.championPlayerIds.length > 0) {
-      soundFx.playPointChime();
-    }
-  };
-
-  const handleRecordGrandFinalResult = (
-    matchType: 'match1' | 'resetMatch',
-    score1: number,
-    score2: number
-  ) => {
-    if (!doubleTournament) return;
-    const updated = recordGrandFinalResult(doubleTournament, matchType, score1, score2);
-    setDoubleTournament(updated);
-    if (updated.grandFinal?.championId) {
-      soundFx.playVictoryFanfare();
-    }
-  };
-
-  const handleResetDoubleTournament = () => {
-    setDoubleTournament(null);
-    soundFx.playPointChime();
   };
 
   return (
@@ -1918,10 +1553,6 @@ export default function App({
         onOpenTransfer={() => setShowTransferModal(true)}
         isSyncing={isSyncing}
         onNavigateToOpenPlay={onNavigateToOpenPlay}
-        hasActiveBracket={Boolean(bracket || doubleTournament)}
-        hasActiveGroupStage={Boolean(groupStage)}
-        activeClub={activeClub}
-        onOpenClubModal={() => setShowClubModal(true)}
       />
 
       {/* Main Content Area */}
@@ -2095,7 +1726,6 @@ export default function App({
             onBenchAndReplacePlayer={handleBenchAndReplacePlayer}
             onStartMatch={handleStartMatch}
             onShuffleLineup={handleShuffleSocialMatch}
-            onOpenTournamentComplete={() => setShowTournamentCompleteModal(true)}
           />
         )}
 
@@ -2104,34 +1734,6 @@ export default function App({
             players={players}
             rounds={rounds}
             config={config}
-            onNavigateToBracket={() => setCurrentTab('bracket')}
-            hasActiveBracket={Boolean(bracket)}
-          />
-        )}
-
-        {currentTab === 'groups' && (
-          <GroupStageView
-            groupStage={groupStage}
-            players={players}
-            config={config}
-            onUpdateGroupStage={handleUpdateGroupStage}
-            onNavigateToBracket={() => setCurrentTab('bracket')}
-          />
-        )}
-
-        {currentTab === 'bracket' && (
-          <BracketView
-            bracket={bracket}
-            doubleTournament={doubleTournament}
-            players={players}
-            standings={standings}
-            config={config}
-            onStartBracket={handleStartBracket}
-            onRecordResult={handleRecordBracketResult}
-            onRecordDoubleBracketResult={handleRecordDoubleBracketResult}
-            onRecordGrandFinalResult={handleRecordGrandFinalResult}
-            onResetBracket={handleResetBracket}
-            onResetDoubleTournament={handleResetDoubleTournament}
           />
         )}
 
@@ -2174,8 +1776,6 @@ export default function App({
         playersCount={players.length}
         hasActiveRound={Boolean(currentRound)}
         onOpenConfig={() => setShowConfigModal(true)}
-        hasActiveBracket={Boolean(bracket || doubleTournament)}
-        hasActiveGroupStage={Boolean(groupStage)}
       />
 
       {/* Modals */}
@@ -2232,37 +1832,6 @@ export default function App({
         isOpen={showOnboarding}
         initialConfig={config}
         onComplete={handleCompleteOnboarding}
-      />
-
-      <TournamentCompleteModal
-        isOpen={showTournamentCompleteModal}
-        onClose={() => setShowTournamentCompleteModal(false)}
-        players={players}
-        rounds={rounds}
-        config={config}
-        bracket={bracket}
-        onRunExtraRound={handleRunExtraTournamentRound}
-        onStartNewTournament={handleStartNewTournament}
-        onExitTournamentMode={handleExitTournamentMode}
-        onViewStandingsTab={() => setCurrentTab('standings')}
-        onOpenBracket={() => setCurrentTab('bracket')}
-        onStartBracket={handleStartBracket}
-        onRecordBracketResult={handleRecordBracketResult}
-        onResetBracket={handleResetBracket}
-      />
-
-      <ClubModal
-        isOpen={showClubModal}
-        onClose={() => setShowClubModal(false)}
-        currentSessionId={sessionId}
-        onSwitchSession={(targetSessionId) => {
-          handleLoadSession(targetSessionId);
-          setShowClubModal(false);
-        }}
-        onNewSessionInClub={() => {
-          handleGenerateNewSession();
-          setShowClubModal(false);
-        }}
       />
     </div>
   );

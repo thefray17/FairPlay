@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Player, Round, SessionConfig, StandingsRow } from '../types';
 import { calculateStandings, formatStandingsForSharing } from '../utils/standings';
-import { getDevicePlayerProfile } from '../utils/identitySync';
 import { HeadToHeadTracker } from './HeadToHeadTracker';
 import { TeamTracker } from './TeamTracker';
 import {
@@ -25,8 +24,6 @@ interface StandingsViewProps {
   players: Player[];
   rounds: Round[];
   config: SessionConfig;
-  onNavigateToBracket?: () => void;
-  hasActiveBracket?: boolean;
 }
 
 type SortField = 'rank' | 'name' | 'mp' | 'won' | 'diff' | 'winRate' | 'pf';
@@ -35,8 +32,6 @@ export const StandingsView: React.FC<StandingsViewProps> = ({
   players,
   rounds,
   config,
-  onNavigateToBracket,
-  hasActiveBracket,
 }) => {
   const [viewTab, setViewTab] = useState<'leaderboard' | 'h2h' | 'teams'>('leaderboard');
   const [selectedRoundFilter, setSelectedRoundFilter] = useState<number | 'all'>('all');
@@ -194,20 +189,6 @@ export const StandingsView: React.FC<StandingsViewProps> = ({
               ))}
             </select>
           </div>
-
-          {onNavigateToBracket && (
-            <button
-              type="button"
-              id="btn-standings-open-bracket"
-              onClick={onNavigateToBracket}
-              className="inline-flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2.5 rounded-xl sm:rounded-2xl bg-amber-400 hover:bg-amber-300 text-indigo-950 font-black text-xs uppercase tracking-wider transition-all shadow-xs cursor-pointer"
-              title="Open or Seed Single Elimination Playoff Bracket"
-              aria-label="Open Playoff Bracket"
-            >
-              <Swords className="w-3.5 h-3.5" />
-              <span>{hasActiveBracket ? 'View Bracket' : 'Start Bracket'}</span>
-            </button>
-          )}
 
           <button
             type="button"
@@ -436,66 +417,52 @@ export const StandingsView: React.FC<StandingsViewProps> = ({
         {/* Mobile Cards View */}
         {displayMode === 'cards' ? (
           <div className="p-3 sm:p-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5 sm:gap-3.5">
-            {(() => {
-              const deviceProfile = getDevicePlayerProfile();
-              return sortedStandings.map((row, index) => {
-                const isLeader = index === 0 && row.won > 0;
-                const isPlayerUser = !!(
-                  deviceProfile?.id &&
-                  (row.playerId === deviceProfile.id || row.playerName.toLowerCase() === deviceProfile.name.toLowerCase())
-                );
-
-                return (
-                  <div
-                    key={`standings-card-${row.playerId}`}
-                    id={`standings-card-${row.playerId}`}
-                    className={`p-3 sm:p-4 rounded-xl sm:rounded-2xl border transition-all ${
-                      isPlayerUser
-                        ? 'bg-amber-50/80 border-yellow-400 ring-2 ring-yellow-400/50 shadow-sm'
-                        : isLeader
-                        ? 'bg-amber-50/70 border-amber-300 ring-2 ring-amber-400/30'
-                        : index === 1 && row.won > 0
-                        ? 'bg-slate-50 border-slate-300'
-                        : 'bg-white border-slate-200 hover:border-slate-300'
-                    }`}
-                  >
-                    {/* Top Row: Rank, Avatar, Name, Win % */}
-                    <div className="flex items-center justify-between gap-2 mb-2 sm:mb-3">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg sm:rounded-xl bg-slate-100 border border-slate-200 text-slate-800 font-black text-xs flex items-center justify-center shrink-0">
-                          {index === 0 && row.won > 0 ? '🥇' : index === 1 && row.won > 0 ? '🥈' : index === 2 && row.won > 0 ? '🥉' : `#${index + 1}`}
-                        </span>
-                        <span
-                          className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-[11px] sm:text-xs font-black border border-white shadow-xs shrink-0 ${row.avatarColor}`}
-                        >
-                          {row.playerName.charAt(0)}
-                        </span>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap">
-                            <span className="font-black text-slate-900 text-xs sm:text-sm truncate">{row.playerName}</span>
-                            {isPlayerUser && (
-                              <span className="px-1.5 py-0.2 rounded-full bg-yellow-400 text-indigo-950 font-black text-[9px]">
-                                YOU
-                              </span>
-                            )}
-                            {!row.active && (
-                              <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded bg-slate-200 text-slate-700">
-                                Break
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-[10px] text-slate-500 font-semibold">
-                            {row.matchesPlayed} {row.matchesPlayed === 1 ? 'match' : 'matches'} played
-                          </span>
+            {sortedStandings.map((row, index) => {
+              const isLeader = index === 0 && row.won > 0;
+              return (
+                <div
+                  key={`standings-card-${row.playerId}`}
+                  id={`standings-card-${row.playerId}`}
+                  className={`p-3 sm:p-4 rounded-xl sm:rounded-2xl border transition-all ${
+                    isLeader
+                      ? 'bg-amber-50/70 border-amber-300 ring-2 ring-amber-400/30'
+                      : index === 1 && row.won > 0
+                      ? 'bg-slate-50 border-slate-300'
+                      : 'bg-white border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  {/* Top Row: Rank, Avatar, Name, Win % */}
+                  <div className="flex items-center justify-between gap-2 mb-2 sm:mb-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg sm:rounded-xl bg-slate-100 border border-slate-200 text-slate-800 font-black text-xs flex items-center justify-center shrink-0">
+                        {index === 0 && row.won > 0 ? '🥇' : index === 1 && row.won > 0 ? '🥈' : index === 2 && row.won > 0 ? '🥉' : `#${index + 1}`}
+                      </span>
+                      <span
+                        className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-[11px] sm:text-xs font-black border border-white shadow-xs shrink-0 ${row.avatarColor}`}
+                      >
+                        {row.playerName.charAt(0)}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1 sm:gap-1.5">
+                          <span className="font-black text-slate-900 text-xs sm:text-sm truncate">{row.playerName}</span>
+                          {!row.active && (
+                            <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded bg-slate-200 text-slate-700">
+                              Break
+                            </span>
+                          )}
                         </div>
-                      </div>
-
-                      <div className="text-right shrink-0">
-                        <span className="inline-block px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg sm:rounded-xl bg-indigo-100 text-indigo-900 font-black text-xs">
-                          {row.winRate}% Win
+                        <span className="text-[10px] text-slate-500 font-semibold">
+                          {row.matchesPlayed} {row.matchesPlayed === 1 ? 'match' : 'matches'} played
                         </span>
                       </div>
                     </div>
+
+                    <div className="text-right shrink-0">
+                      <span className="inline-block px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg sm:rounded-xl bg-indigo-100 text-indigo-900 font-black text-xs">
+                        {row.winRate}% Win
+                      </span>
+                    </div>
+                  </div>
 
                   {/* Middle Row: Primary Record & Diff */}
                   <div className="flex items-center justify-between bg-slate-50/90 rounded-lg sm:rounded-xl p-2 sm:p-2.5 border border-slate-100 mb-2">
@@ -552,8 +519,7 @@ export const StandingsView: React.FC<StandingsViewProps> = ({
                   </div>
                 </div>
               );
-            });
-            })()}
+            })}
           </div>
         ) : (
           /* Table */
@@ -637,58 +603,43 @@ export const StandingsView: React.FC<StandingsViewProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
-              {(() => {
-                const deviceProfile = getDevicePlayerProfile();
-                return sortedStandings.map((row, index) => {
-                  const isLeader = index === 0 && row.won > 0;
-                  const isPlayerUser = !!(
-                    deviceProfile?.id &&
-                    (row.playerId === deviceProfile.id || row.playerName.toLowerCase() === deviceProfile.name.toLowerCase())
-                  );
-                  return (
-                    <tr
-                      key={row.playerId}
-                      id={`standings-row-${row.playerId}`}
-                      className={`hover:bg-slate-50 transition-colors ${
-                        isPlayerUser
-                          ? 'bg-amber-50/80 font-bold border-l-4 border-yellow-400'
-                          : isLeader
-                          ? 'bg-yellow-50/50 font-semibold'
-                          : ''
-                      }`}
-                    >
-                      <td className="py-3 px-4 font-black text-slate-600">
-                        {index === 0 && row.won > 0 ? (
-                          <span className="text-indigo-900 font-black">🥇 1</span>
-                        ) : index === 1 && row.won > 0 ? (
-                          <span className="text-slate-700 font-black">🥈 2</span>
-                        ) : index === 2 && row.won > 0 ? (
-                          <span className="text-slate-700 font-black">🥉 3</span>
-                        ) : (
-                          `#${index + 1}`
-                        )}
-                      </td>
+              {sortedStandings.map((row, index) => {
+                const isLeader = index === 0 && row.won > 0;
+                return (
+                  <tr
+                    key={row.playerId}
+                    id={`standings-row-${row.playerId}`}
+                    className={`hover:bg-slate-50 transition-colors ${
+                      isLeader ? 'bg-yellow-50/50 font-semibold' : ''
+                    }`}
+                  >
+                    <td className="py-3 px-4 font-black text-slate-600">
+                      {index === 0 && row.won > 0 ? (
+                        <span className="text-indigo-900 font-black">🥇 1</span>
+                      ) : index === 1 && row.won > 0 ? (
+                        <span className="text-slate-700 font-black">🥈 2</span>
+                      ) : index === 2 && row.won > 0 ? (
+                        <span className="text-slate-700 font-black">🥉 3</span>
+                      ) : (
+                        `#${index + 1}`
+                      )}
+                    </td>
 
-                      <td className="py-3 px-4 font-bold text-slate-900">
-                        <div className="flex items-center gap-2.5">
-                          <span
-                            className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black border-2 border-white shadow-xs ${row.avatarColor}`}
-                          >
-                            {row.playerName.charAt(0)}
+                    <td className="py-3 px-4 font-bold text-slate-900">
+                      <div className="flex items-center gap-2.5">
+                        <span
+                          className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black border-2 border-white shadow-xs ${row.avatarColor}`}
+                        >
+                          {row.playerName.charAt(0)}
+                        </span>
+                        <span className="truncate text-sm">{row.playerName}</span>
+                        {!row.active && (
+                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-slate-200 text-slate-700">
+                            Break
                           </span>
-                          <span className="truncate text-sm">{row.playerName}</span>
-                          {isPlayerUser && (
-                            <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-yellow-400 text-indigo-950">
-                              YOU
-                            </span>
-                          )}
-                          {!row.active && (
-                            <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-slate-200 text-slate-700">
-                              Break
-                            </span>
-                          )}
-                        </div>
-                      </td>
+                        )}
+                      </div>
+                    </td>
 
                     <td className="py-3 px-3 text-center font-black text-slate-900">
                       <span className="px-2 py-0.5 rounded-xl bg-slate-100 border border-slate-200 text-xs">
@@ -761,8 +712,7 @@ export const StandingsView: React.FC<StandingsViewProps> = ({
                     </td>
                   </tr>
                 );
-              });
-            })()}
+              })}
             </tbody>
           </table>
         </div>

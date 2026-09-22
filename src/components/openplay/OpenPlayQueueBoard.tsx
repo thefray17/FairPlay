@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { OpenPlayPlayer, OpenPlayConfig } from '../../types/openPlay';
-import { getDevicePlayerProfile } from '../../utils/identitySync';
 import {
   Trophy,
   Users,
@@ -127,28 +126,16 @@ export const OpenPlayQueueBoard: React.FC<OpenPlayQueueBoardProps> = ({
     const isNextMoveUp = bucket === 'losers' && index < Math.max(0, 4 - winnersQueue.length) && winnersQueue.length > 0;
     const isNextBenchIn = bucket === 'bench' && index === 0;
 
-    const deviceProfile = getDevicePlayerProfile();
-    const isPlayerUser = !!(
-      deviceProfile?.id &&
-      (('playerProfileId' in p && p.playerProfileId === deviceProfile.id) || p.id === deviceProfile.id || p.name.toLowerCase() === deviceProfile.name.toLowerCase())
-    );
-
     return (
       <div
         key={id}
-        className={`p-2 sm:p-2.5 rounded-xl border transition-all flex items-center justify-between gap-2 ${
-          isPlayerUser
-            ? 'bg-yellow-50/80 border-yellow-400 ring-2 ring-yellow-400/30 shadow-xs'
-            : 'bg-white border-slate-200/90 shadow-2xs hover:border-slate-300'
-        }`}
+        className="p-2 sm:p-2.5 rounded-xl bg-white border border-slate-200/90 shadow-2xs hover:border-slate-300 transition-all flex items-center justify-between gap-2"
       >
         <div className="flex items-center gap-2 min-w-0 flex-1">
           {/* Queue Position Badge */}
           <span
             className={`w-6 h-6 rounded-lg text-xs font-mono font-black flex items-center justify-center shrink-0 ${
-              isPlayerUser
-                ? 'bg-yellow-400 text-indigo-950 font-black'
-                : bucket === 'winners'
+              bucket === 'winners'
                 ? 'bg-amber-100 text-amber-900 border border-amber-300'
                 : bucket === 'losers'
                 ? 'bg-teal-100 text-teal-900 border border-teal-300'
@@ -188,12 +175,6 @@ export const OpenPlayQueueBoard: React.FC<OpenPlayQueueBoardProps> = ({
                 <span className="text-xs font-black text-slate-900 truncate">
                   {p.name}
                 </span>
-
-                {isPlayerUser && (
-                  <span className="px-1.5 py-0.2 rounded-full bg-yellow-400 text-indigo-950 font-black text-[9px]">
-                    YOU
-                  </span>
-                )}
 
                 {/* Move-Up / Next In Badges */}
                 {isNextMoveUp && (

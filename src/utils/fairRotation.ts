@@ -8,7 +8,6 @@ import {
   MatchupCoverage,
   TeamVsTeamRecord,
   TeamMatchInstance,
-  MatchFormat,
 } from '../types';
 
 /**
@@ -1462,125 +1461,6 @@ export function getMatchupCoverage(
     coveragePercentage,
     neverFacedCount: Math.max(0, totalPossibleMatchups - uniqueMatchupsFormed),
     opponentMatrix: opponentCount,
-  };
-}
-
-export interface TournamentRoundsSuggestion {
-  suggestedRounds: number;
-  totalPossibleMatchups: number;
-  estimatedCoverage: number;
-  minRecommendedRounds: number;
-  maxRecommendedRounds: number;
-  reason: string;
-}
-
-/**
- * Suggests an optimal total round count for a fixed-length Round Robin tournament
- * based on active player count, courts available, and match format.
- * Aims to maximize unique matchup coverage while providing balanced games per player.
- */
-export function suggestTournamentRounds(
-  players: Player[],
-  courtsCount: number,
-  format: MatchFormat = 'doubles',
-  playersPerTeam: number = 2
-): TournamentRoundsSuggestion {
-  const activePlayers = players.filter((p) => p.active);
-  const n = activePlayers.length;
-  const c = Math.max(1, courtsCount);
-  const ppt = Math.max(1, playersPerTeam);
-  const playersPerMatch = ppt * 2;
-
-  // Total unique opponent 2-player pairings
-  const totalPossibleMatchups = n > 1 ? (n * (n - 1)) / 2 : 0;
-
-  if (n < playersPerMatch) {
-    return {
-      suggestedRounds: 5,
-      totalPossibleMatchups,
-      estimatedCoverage: 100,
-      minRecommendedRounds: 2,
-      maxRecommendedRounds: 10,
-      reason: `Add at least ${playersPerMatch} players to form standard matches.`,
-    };
-  }
-
-  let suggested = 5;
-  let reason = '';
-
-  if (format === 'singles' || ppt === 1) {
-    // In singles, standard round robin is n - 1 (even n) or n (odd n) when courts suffice
-    const baseRounds = n % 2 === 0 ? n - 1 : n;
-    const maxCourtsNeeded = Math.floor(n / 2);
-    if (c >= maxCourtsNeeded) {
-      suggested = baseRounds;
-      reason = `${baseRounds} rounds lets every player face all ${n - 1} opponents exactly once.`;
-    } else {
-      // Court constrained
-      suggested = Math.ceil(totalPossibleMatchups / c);
-      reason = `${suggested} rounds covers all ${totalPossibleMatchups} pairings across ${c} courts.`;
-    }
-  } else {
-    // Doubles / Multi-player
-    if (n === 4) {
-      suggested = 3;
-      reason = '3 rounds covers all 3 unique partner pairings for 4 players.';
-    } else if (n === 5) {
-      suggested = 5;
-      reason = '5 rounds gives every player exactly 4 games and 1 rest round with complete coverage.';
-    } else if (n === 6) {
-      suggested = 5;
-      reason = '5 rounds gives balanced rotations with near 100% matchup coverage.';
-    } else if (n === 7) {
-      suggested = 7;
-      reason = '7 rounds ensures equal games per player with high partner diversity.';
-    } else if (n === 8) {
-      suggested = 7;
-      reason = '7 rounds is the standard 8-player compass round robin (partnering with all 7 players).';
-    } else if (n <= 12) {
-      const maxPlaying = c * playersPerMatch;
-      if (maxPlaying >= n) {
-        suggested = n % 2 === 0 ? n - 1 : n;
-        reason = `${suggested} rounds maximizes partner and opponent variety across courts.`;
-      } else {
-        const avgGamesTarget = 4;
-        suggested = Math.ceil((n * avgGamesTarget) / maxPlaying);
-        reason = `${suggested} rounds gives each player ~${avgGamesTarget} matches with court benching rotations.`;
-      }
-    } else {
-      const maxPlaying = c * playersPerMatch;
-      const avgGamesTarget = 4;
-      suggested = Math.max(5, Math.ceil((n * avgGamesTarget) / maxPlaying));
-      reason = `${suggested} rounds balances court capacity (${c} courts) with ~${avgGamesTarget} games per player.`;
-    }
-  }
-
-  const clampedSuggested = Math.max(2, Math.min(20, suggested));
-  const minRecommended = Math.max(2, Math.min(clampedSuggested - 2, 3));
-  const maxRecommended = Math.max(clampedSuggested + 4, 10);
-
-  const matchesPerRound = Math.min(c, Math.floor(n / playersPerMatch));
-  const pairsPerRound = matchesPerRound * (ppt * ppt);
-  const totalPairsGenerated = pairsPerRound * clampedSuggested;
-  const estimatedCoverage =
-    totalPossibleMatchups > 0
-      ? Math.min(
-          100,
-          Math.round(
-            (Math.min(totalPossibleMatchups, totalPairsGenerated * 0.95) /
-              totalPossibleMatchups) *
-              100
-          )
-        )
-      : 100;
-
-  return {
-    suggestedRounds: clampedSuggested,
-    totalPossibleMatchups,
-    estimatedCoverage,
-    minRecommendedRounds: minRecommended,
-    maxRecommendedRounds: maxRecommended,
-    reason,
   };
 }
 

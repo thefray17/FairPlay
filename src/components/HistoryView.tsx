@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Match, Player, Round, SessionConfig } from '../types';
-import { getDevicePlayerProfile } from '../utils/identitySync';
-import { History, CheckCircle2, Trophy, Edit2, Check, X, Trash2, AlertTriangle, Clock, UserCheck } from 'lucide-react';
+import { History, CheckCircle2, Trophy, Edit2, Check, X, Trash2, AlertTriangle, Clock } from 'lucide-react';
 import { soundFx } from '../utils/audio';
 
 interface HistoryViewProps {
@@ -26,9 +25,6 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   const [tempScore2, setTempScore2] = useState(0);
   const [matchToDelete, setMatchToDelete] = useState<{ match: Match; roundNumber: number } | null>(null);
   const [roundToDelete, setRoundToDelete] = useState<number | null>(null);
-  const [onlyMyMatches, setOnlyMyMatches] = useState(false);
-
-  const deviceProfile = getDevicePlayerProfile();
 
   const startEdit = (matchId: string, score1: number, score2: number) => {
     setEditingMatchId(matchId);
@@ -81,26 +77,9 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
-          {deviceProfile?.id && (
-            <button
-              type="button"
-              id="btn-toggle-my-matches-history"
-              onClick={() => setOnlyMyMatches(!onlyMyMatches)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-black transition-all cursor-pointer ${
-                onlyMyMatches
-                  ? 'bg-yellow-400 text-indigo-950 shadow-xs'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200'
-              }`}
-            >
-              <UserCheck className="w-3.5 h-3.5" />
-              <span>{onlyMyMatches ? 'Showing My Matches' : 'My Matches Only'}</span>
-            </button>
-          )}
-          <span className="text-[10px] sm:text-xs font-black px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-full bg-slate-100 text-slate-800 uppercase tracking-wider border border-slate-200">
-            {rounds.length} {rounds.length === 1 ? 'Round' : 'Rounds'} Played
-          </span>
-        </div>
+        <span className="text-[10px] sm:text-xs font-black px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-full bg-slate-100 text-slate-800 uppercase tracking-wider border border-slate-200 shrink-0 self-start sm:self-auto">
+          {rounds.length} {rounds.length === 1 ? 'Round' : 'Rounds'} Played
+        </span>
       </div>
 
       <div className="space-y-3.5 sm:space-y-5">
@@ -108,20 +87,6 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
           const restingPlayers = round.restingPlayerIds
             .map((id) => playersMap[id])
             .filter(Boolean);
-
-          const displayedMatches = onlyMyMatches && deviceProfile?.id
-            ? round.matches.filter((m) => {
-                const pIds = [...m.team1.playerIds, ...m.team2.playerIds];
-                return pIds.some((id) => {
-                  const p = playersMap[id];
-                  return p && (p.playerProfileId === deviceProfile.id || p.id === deviceProfile.id || p.name.toLowerCase() === deviceProfile.name.toLowerCase());
-                });
-              })
-            : round.matches;
-
-          if (onlyMyMatches && displayedMatches.length === 0) {
-            return null;
-          }
 
           return (
             <div
@@ -137,7 +102,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                   </span>
                   <h3 className="font-black text-slate-900 text-xs sm:text-sm">Round {round.roundNumber}</h3>
                   <span className="text-[11px] sm:text-xs font-bold text-slate-500">
-                    • {displayedMatches.length} {displayedMatches.length === 1 ? 'Court' : 'Courts'}
+                    • {round.matches.length} {round.matches.length === 1 ? 'Court' : 'Courts'}
                   </span>
                 </div>
 
@@ -168,7 +133,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
 
               {/* Matches List */}
               <div className="divide-y divide-slate-100">
-                {displayedMatches.map((match, mIdx) => {
+                {round.matches.map((match, mIdx) => {
                   const t1Players = match.team1.playerIds.map((id) => playersMap[id]).filter(Boolean);
                   const t2Players = match.team2.playerIds.map((id) => playersMap[id]).filter(Boolean);
                   const isEditing = editingMatchId === match.id;
@@ -177,28 +142,14 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                   const team1Names = t1Players.map((p) => p.name).join(' & ');
                   const team2Names = t2Players.map((p) => p.name).join(' & ');
                   const timestamp = match.finishedAt || match.startedAt || round.generatedAt;
-                  const userIsInMatch = !!(
-                    deviceProfile?.id &&
-                    [...t1Players, ...t2Players].some(
-                      (p) => p.playerProfileId === deviceProfile.id || p.id === deviceProfile.id || p.name.toLowerCase() === deviceProfile.name.toLowerCase()
-                    )
-                  );
 
                   return (
                     <div
                       key={match.id}
-                      className={`p-3.5 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors ${
-                        userIsInMatch
-                          ? 'bg-amber-50/40 border-l-4 border-yellow-400 hover:bg-amber-50/70'
-                          : 'hover:bg-slate-50'
-                      }`}
+                      className="p-3.5 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50 transition-colors"
                     >
                       <div className="flex items-start sm:items-center gap-3">
-                        <span className={`w-8 h-8 rounded-xl font-black text-xs flex items-center justify-center shrink-0 ${
-                          userIsInMatch
-                            ? 'bg-yellow-400 text-indigo-950 font-black shadow-xs'
-                            : 'bg-slate-100 text-slate-700'
-                        }`}>
+                        <span className="w-8 h-8 rounded-xl bg-slate-100 text-slate-700 font-black text-xs flex items-center justify-center shrink-0">
                           {match.courtNumber ? `C${match.courtNumber}` : `M${match.matchOrder || mIdx + 1}`}
                         </span>
 
@@ -207,11 +158,6 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                             <span className="text-xs font-black text-slate-900">
                               Game-{match.matchOrder || mIdx + 1}
                             </span>
-                            {userIsInMatch && (
-                              <span className="px-1.5 py-0.2 rounded-full bg-yellow-400 text-indigo-950 font-black text-[9px]">
-                                Your Match
-                              </span>
-                            )}
                             <span className="text-[11px] text-slate-400">•</span>
                             <span className="text-[11px] font-mono text-slate-500 flex items-center gap-1">
                               <Clock className="w-3 h-3" />

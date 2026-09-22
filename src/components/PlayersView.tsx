@@ -18,8 +18,6 @@ import {
   ArrowRightLeft,
   Link2,
   Unlink,
-  Lock,
-  Trophy,
 } from 'lucide-react';
 
 interface PlayersViewProps {
@@ -67,12 +65,6 @@ export const PlayersView: React.FC<PlayersViewProps> = ({
   
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
-  const isTournamentLocked = Boolean(
-    config.tournamentMode?.enabled &&
-      config.tournamentMode.locked &&
-      !config.tournamentMode.completedAt
-  );
-
   const matchCounts = getPlayerMatchCounts(players, rounds);
   const activeCount = players.filter((p) => p.active).length;
   const pausedCount = players.filter((p) => !p.active).length;
@@ -104,28 +96,6 @@ export const PlayersView: React.FC<PlayersViewProps> = ({
   return (
     <div id="players-view" className="space-y-6">
       {/* Top Banner Stats */}
-      {isTournamentLocked && (
-        <div className="p-3.5 sm:p-4 bg-amber-50 border border-amber-200 rounded-2xl sm:rounded-3xl flex items-center justify-between gap-3 text-amber-950">
-          <div className="flex items-center gap-2.5 sm:gap-3">
-            <div className="w-8 h-8 rounded-xl bg-amber-200 text-amber-900 flex items-center justify-center shrink-0">
-              <Lock className="w-4 h-4" />
-            </div>
-            <div>
-              <div className="text-xs font-black uppercase tracking-wider">
-                Tournament Roster Locked ({config.tournamentMode?.totalRounds} Rounds)
-              </div>
-              <p className="text-[11px] text-amber-900/90 font-medium">
-                Player list is locked for the current tournament to guarantee fair round-robin scheduling.
-              </p>
-            </div>
-          </div>
-          <div className="hidden sm:flex items-center gap-1 text-[11px] font-black uppercase tracking-wider bg-amber-100 px-3 py-1.5 rounded-xl text-amber-900">
-            <Trophy className="w-3.5 h-3.5" />
-            <span>Round Robin</span>
-          </div>
-        </div>
-      )}
-
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
         <div className="bg-yellow-400 p-3 sm:p-5 rounded-2xl sm:rounded-3xl border border-yellow-500/40 shadow-sm flex items-center gap-2.5 sm:gap-3 relative overflow-hidden">
           <div className="absolute -right-6 -top-6 w-16 sm:w-20 h-16 sm:h-20 bg-yellow-300 rounded-full opacity-60 pointer-events-none" />
@@ -207,63 +177,51 @@ export const PlayersView: React.FC<PlayersViewProps> = ({
 
       {/* Add Player Bar */}
       <div className="bg-white p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl border border-slate-200 shadow-sm">
-        {isTournamentLocked ? (
-          <div className="flex items-center justify-between gap-3 text-xs bg-slate-50 border border-slate-200/80 rounded-xl sm:rounded-2xl p-3">
-            <div className="flex items-center gap-2 text-slate-700">
-              <Lock className="w-4 h-4 text-amber-600 shrink-0" />
-              <span className="font-bold">Player roster is locked for the current tournament.</span>
-            </div>
-            <span className="text-[11px] font-semibold text-slate-500 hidden sm:inline">
-              Roster changes disabled to maintain round-robin integrity
-            </span>
-          </div>
-        ) : (
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-3">
-            <form onSubmit={handleSingleAdd} className="flex-1 flex gap-2">
-              <input
-                id="input-new-player-name"
-                type="text"
-                placeholder="Player name..."
-                value={newPlayerName}
-                onChange={(e) => setNewPlayerName(e.target.value)}
-                className="flex-1 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl border border-slate-200 text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600"
-              />
-              <button
-                type="submit"
-                id="btn-add-player"
-                disabled={!newPlayerName.trim()}
-                className="inline-flex items-center gap-1.5 px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-black text-xs uppercase tracking-wider transition-all shadow-xs cursor-pointer shrink-0"
-              >
-                <UserPlus className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> Add
-              </button>
-            </form>
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-3">
+          <form onSubmit={handleSingleAdd} className="flex-1 flex gap-2">
+            <input
+              id="input-new-player-name"
+              type="text"
+              placeholder="Player name..."
+              value={newPlayerName}
+              onChange={(e) => setNewPlayerName(e.target.value)}
+              className="flex-1 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl border border-slate-200 text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+            />
+            <button
+              type="submit"
+              id="btn-add-player"
+              disabled={!newPlayerName.trim()}
+              className="inline-flex items-center gap-1.5 px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-black text-xs uppercase tracking-wider transition-all shadow-xs cursor-pointer shrink-0"
+            >
+              <UserPlus className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> Add
+            </button>
+          </form>
 
-            <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              id="btn-open-bulk-add"
+              onClick={() => setShowBulkModal(true)}
+              className="inline-flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl border border-slate-200 bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-xs uppercase tracking-wider transition-colors cursor-pointer shrink-0"
+            >
+              <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-indigo-600" />
+              <span>Bulk Paste Roster</span>
+            </button>
+
+            {onPullFromOpenPlay && (
               <button
                 type="button"
-                id="btn-open-bulk-add"
-                onClick={() => setShowBulkModal(true)}
-                className="inline-flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl border border-slate-200 bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-xs uppercase tracking-wider transition-colors cursor-pointer shrink-0"
+                id="btn-sync-with-openplay"
+                onClick={() => setShowSyncConfirm(true)}
+                className="inline-flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 font-black text-xs uppercase tracking-wider transition-all cursor-pointer shadow-xs shrink-0"
+                title="Overwrite Social Matches roster with Open Play roster"
               >
-                <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-indigo-600" />
-                <span>Bulk Paste Roster</span>
+                <ArrowRightLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600" />
+                <span>Pull from Open Play{openPlayPlayersCount > 0 ? ` (${openPlayPlayersCount})` : ''}</span>
               </button>
-
-              {onPullFromOpenPlay && (
-                <button
-                  type="button"
-                  id="btn-sync-with-openplay"
-                  onClick={() => setShowSyncConfirm(true)}
-                  className="inline-flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 font-black text-xs uppercase tracking-wider transition-all cursor-pointer shadow-xs shrink-0"
-                  title="Overwrite Social Matches roster with Open Play roster"
-                >
-                  <ArrowRightLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600" />
-                  <span>Pull from Open Play{openPlayPlayersCount > 0 ? ` (${openPlayPlayersCount})` : ''}</span>
-                </button>
-              )}
-            </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
 
       {/* Players List Grid */}
@@ -278,7 +236,7 @@ export const PlayersView: React.FC<PlayersViewProps> = ({
                 If a player is benched (paused) or deleted during an active match, they are automatically replaced on court by the highest-priority player from the bench.
               </p>
             </HelpTip>
-            {players.length > 0 && onClearRoster && !isTournamentLocked && (
+            {players.length > 0 && onClearRoster && (
               <button
                 type="button"
                 id="btn-clear-roster"
@@ -291,7 +249,7 @@ export const PlayersView: React.FC<PlayersViewProps> = ({
             )}
           </div>
           <span className="text-[11px] font-semibold text-slate-500">
-            {isTournamentLocked ? 'Roster locked for tournament' : 'Click status to pause/bench player'}
+            Click status to pause/bench player
           </span>
         </div>
 
@@ -480,21 +438,16 @@ export const PlayersView: React.FC<PlayersViewProps> = ({
                   {/* Active / Paused Status Toggle */}
                   <button
                     type="button"
-                    disabled={isTournamentLocked}
-                    onClick={() => !isTournamentLocked && onTogglePlayerActive(player.id)}
+                    onClick={() => onTogglePlayerActive(player.id)}
                     title={
-                      isTournamentLocked
-                        ? 'Player status is locked for the current tournament'
-                        : player.active
+                      player.active
                         ? 'Pause/bench player (auto-replaced on court; breaks duo if linked)'
                         : 'Re-activate player into fair rotation pool'
                     }
-                    className={`inline-flex items-center gap-1 px-2 sm:px-3.5 py-1 sm:py-1.5 rounded-full text-[10px] sm:text-[11px] font-black uppercase tracking-wider transition-colors ${
-                      isTournamentLocked
-                        ? 'bg-slate-100 text-slate-500 cursor-not-allowed opacity-80'
-                        : player.active
-                        ? 'bg-indigo-100 text-indigo-900 hover:bg-indigo-200 cursor-pointer'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200 cursor-pointer'
+                    className={`inline-flex items-center gap-1 px-2 sm:px-3.5 py-1 sm:py-1.5 rounded-full text-[10px] sm:text-[11px] font-black uppercase tracking-wider transition-colors cursor-pointer ${
+                      player.active
+                        ? 'bg-indigo-100 text-indigo-900 hover:bg-indigo-200'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                     }`}
                   >
                     {player.active ? (
@@ -511,7 +464,7 @@ export const PlayersView: React.FC<PlayersViewProps> = ({
                   </button>
 
                   {/* Delete Player Button with 2-step confirmation */}
-                  {onRemovePlayer && !isTournamentLocked && (
+                  {onRemovePlayer && (
                     confirmDeleteId === player.id ? (
                       <div className="flex items-center gap-1">
                         <button

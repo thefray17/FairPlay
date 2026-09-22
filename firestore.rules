@@ -6,7 +6,7 @@ service cloud.firestore {
     function isValidSessionWrite() {
       let data = request.resource.data;
       return data.keys().hasOnly([
-        'id', 'clubId', 'config', 'players', 'rounds', 'upcomingMatches',
+        'id', 'config', 'players', 'rounds', 'upcomingMatches',
         'openPlay', 'ownerUid', 'organizerToken', 'updatedAt', 'createdAt', 'deviceOrigin'
       ])
       && data.id is string
@@ -15,7 +15,6 @@ service cloud.firestore {
       && data.organizerToken is string
       && data.organizerToken.size() > 0
       && data.organizerToken.size() <= 128
-      && (!('clubId' in data) || (data.clubId is string && data.clubId.size() <= 64))
       && (!('updatedAt' in data) || data.updatedAt is number)
       && (!('createdAt' in data) || data.createdAt is number)
       && (!('config' in data) || data.config is map)
@@ -46,40 +45,6 @@ service cloud.firestore {
       allow delete: if request.auth != null && resource.data.ownerUid == request.auth.uid;
     }
 
-    // Helper to validate allowed keys and fields for club/squad documents
-    function isValidClubWrite() {
-      let data = request.resource.data;
-      return data.keys().hasOnly([
-        'id', 'name', 'code', 'createdByUid', 'memberProfileIds', 'sessionIds',
-        'createdAt', 'updatedAt', 'description', 'sport'
-      ])
-      && data.id is string
-      && data.id.size() > 0
-      && data.id.size() <= 64
-      && data.name is string
-      && data.name.size() > 0
-      && data.name.size() <= 100
-      && data.code is string
-      && data.code.size() >= 4
-      && data.code.size() <= 16
-      && (!('createdByUid' in data) || (data.createdByUid is string && data.createdByUid.size() <= 128))
-      && (!('memberProfileIds' in data) || data.memberProfileIds is list)
-      && (!('sessionIds' in data) || data.sessionIds is list)
-      && (!('createdAt' in data) || data.createdAt is number)
-      && (!('updatedAt' in data) || data.updatedAt is number)
-      && (!('description' in data) || (data.description is string && data.description.size() <= 500))
-      && (!('sport' in data) || (data.sport is string && data.sport.size() <= 32));
-    }
-
-    // Clubs collection:
-    // Reads stay public so squad members can join via 4-digit code and view squad info
-    match /clubs/{clubId} {
-      allow read: if true;
-      allow create: if isValidClubWrite();
-      allow update: if isValidClubWrite();
-      allow delete: if request.auth != null && resource.data.createdByUid == request.auth.uid;
-    }
-
     // User accounts & organizer profiles:
     // Scoped to authenticated users for now. Once real account auth ships,
     // this should be scoped further to request.auth.uid == userId / profile ownership.
@@ -89,9 +54,10 @@ service cloud.firestore {
     }
 
     // Player profiles across sessions:
-    // Reads are public so squad members and spectators can view cross-session stats
+    // Scoped to authenticated users for now. Once real account auth ships,
+    // this should be scoped further to request.auth.uid == userId / profile ownership.
     match /playerProfiles/{profileId} {
-      allow read: if true;
+      allow read: if request.auth != null;
       allow write: if request.resource.data.name is string
                    && request.resource.data.name.size() > 0
                    && request.resource.data.name.size() <= 64;

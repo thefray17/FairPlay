@@ -16,7 +16,6 @@ import {
   Scale,
   AlertTriangle,
   X,
-  Trophy,
 } from 'lucide-react';
 import { soundFx } from '../utils/audio';
 import {
@@ -52,7 +51,6 @@ interface ActiveRoundViewProps {
   onBenchAndReplacePlayer?: (matchId: string, playerId: string) => void;
   onStartMatch?: (matchId: string) => void;
   onShuffleLineup?: (matchId: string) => void;
-  onOpenTournamentComplete?: () => void;
 }
 
 export const ActiveRoundView: React.FC<ActiveRoundViewProps> = ({
@@ -82,7 +80,6 @@ export const ActiveRoundView: React.FC<ActiveRoundViewProps> = ({
   onBenchAndReplacePlayer,
   onStartMatch,
   onShuffleLineup,
-  onOpenTournamentComplete,
 }) => {
   const [editingMatchId, setEditingMatchId] = useState<string | null>(null);
   const [showConfirmRegenerate, setShowConfirmRegenerate] = useState(false);
@@ -509,67 +506,33 @@ export const ActiveRoundView: React.FC<ActiveRoundViewProps> = ({
       {allMatchesCompleted && !isViewingPastRound && (
         <div
           id="round-complete-banner"
-          className={`${
-            config.tournamentMode?.enabled && currentRound.roundNumber >= (config.tournamentMode.totalRounds || 0)
-              ? 'bg-amber-500 border-amber-400 text-amber-950'
-              : 'bg-emerald-600 border-emerald-500 text-white'
-          } rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-sm border flex flex-col sm:flex-row items-center justify-between gap-3.5`}
+          className="bg-emerald-600 text-white rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-sm border border-emerald-500 flex flex-col sm:flex-row items-center justify-between gap-3.5"
         >
           <div className="flex items-center gap-3 min-w-0 text-center sm:text-left">
-            <div
-              className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl ${
-                config.tournamentMode?.enabled && currentRound.roundNumber >= (config.tournamentMode.totalRounds || 0)
-                  ? 'bg-amber-600 text-white'
-                  : 'bg-emerald-700/80 text-white'
-              } flex items-center justify-center font-black shrink-0`}
-            >
-              {config.tournamentMode?.enabled && currentRound.roundNumber >= (config.tournamentMode.totalRounds || 0) ? (
-                <Trophy className="w-5 h-5 sm:w-6 sm:h-6" />
-              ) : (
-                <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6" />
-              )}
+            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-emerald-700/80 text-white flex items-center justify-center font-black shrink-0">
+              <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
             <div>
-              <div className="text-sm sm:text-base font-black">
-                {config.tournamentMode?.enabled && currentRound.roundNumber >= (config.tournamentMode.totalRounds || 0)
-                  ? `Tournament Finished! (All ${config.tournamentMode.totalRounds} Rounds Done)`
-                  : `Round ${currentRound.roundNumber} Finished!`}
+              <div className="text-sm sm:text-base font-black text-white">
+                Round {currentRound.roundNumber} Finished!
               </div>
-              <p className={`text-[11px] sm:text-xs mt-0.5 ${
-                config.tournamentMode?.enabled && currentRound.roundNumber >= (config.tournamentMode.totalRounds || 0)
-                  ? 'text-amber-950/80 font-medium'
-                  : 'text-emerald-100'
-              }`}>
-                {config.tournamentMode?.enabled && currentRound.roundNumber >= (config.tournamentMode.totalRounds || 0)
-                  ? 'All scheduled tournament matches are finished. View the final championship standings & awards podium!'
-                  : `All matches have concluded. Round ${currentRound.roundNumber + 1} will only start or activate once you press Next Round.`}
+              <p className="text-[11px] sm:text-xs text-emerald-100 mt-0.5">
+                All matches have concluded. Round {currentRound.roundNumber + 1} will only start or activate once you press Next Round.
               </p>
             </div>
           </div>
-          {config.tournamentMode?.enabled && currentRound.roundNumber >= (config.tournamentMode.totalRounds || 0) ? (
-            <button
-              type="button"
-              id="btn-banner-view-podium"
-              onClick={() => onOpenTournamentComplete?.()}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl sm:rounded-2xl bg-indigo-950 hover:bg-indigo-900 text-yellow-300 font-black text-xs uppercase tracking-wider transition-all shadow-md active:scale-95 cursor-pointer shrink-0"
-            >
-              <Trophy className="w-4 h-4 text-yellow-400" />
-              <span>Championship Podium</span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              id="btn-banner-start-next-round"
-              onClick={() => {
-                soundFx.playWhistle();
-                onGenerateNextRound();
-              }}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl sm:rounded-2xl bg-yellow-400 hover:bg-yellow-300 text-indigo-950 font-black text-xs uppercase tracking-wider transition-all shadow-md active:scale-95 cursor-pointer shrink-0"
-            >
-              <span>Next Round (R{currentRound.roundNumber + 1})</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          )}
+          <button
+            type="button"
+            id="btn-banner-start-next-round"
+            onClick={() => {
+              soundFx.playWhistle();
+              onGenerateNextRound();
+            }}
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl sm:rounded-2xl bg-yellow-400 hover:bg-yellow-300 text-indigo-950 font-black text-xs uppercase tracking-wider transition-all shadow-md active:scale-95 cursor-pointer shrink-0"
+          >
+            <span>Next Round (R{currentRound.roundNumber + 1})</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
         </div>
       )}
 
@@ -741,34 +704,22 @@ export const ActiveRoundView: React.FC<ActiveRoundViewProps> = ({
               </button>
             )}
 
-            {config.tournamentMode?.enabled && currentRound.roundNumber >= (config.tournamentMode.totalRounds || 0) && allMatchesCompleted ? (
-              <button
-                type="button"
-                id="btn-mobile-quick-podium"
-                onClick={() => onOpenTournamentComplete?.()}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg sm:rounded-xl font-black text-xs uppercase tracking-wider transition-all shadow-md active:scale-95 cursor-pointer min-h-[38px] sm:min-h-[42px] bg-yellow-400 text-indigo-950 shadow-yellow-500/30 ring-2 ring-yellow-300"
-              >
-                <Trophy className="w-3.5 h-3.5 text-indigo-950" />
-                <span>Podium</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                id="btn-mobile-quick-next-round"
-                onClick={() => {
-                  soundFx.playWhistle();
-                  onGenerateNextRound();
-                }}
-                className={`inline-flex items-center gap-1 px-3 py-2 rounded-lg sm:rounded-xl font-black text-xs uppercase tracking-wider transition-all shadow-md active:scale-95 cursor-pointer min-h-[38px] sm:min-h-[42px] ${
-                  allMatchesCompleted
-                    ? 'bg-yellow-400 text-indigo-950 shadow-yellow-500/30 ring-2 ring-yellow-300'
-                    : 'bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white'
-                }`}
-              >
-                <span>Next R{currentRound.roundNumber + 1}</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            )}
+            <button
+              type="button"
+              id="btn-mobile-quick-next-round"
+              onClick={() => {
+                soundFx.playWhistle();
+                onGenerateNextRound();
+              }}
+              className={`inline-flex items-center gap-1 px-3 py-2 rounded-lg sm:rounded-xl font-black text-xs uppercase tracking-wider transition-all shadow-md active:scale-95 cursor-pointer min-h-[38px] sm:min-h-[42px] ${
+                allMatchesCompleted
+                  ? 'bg-yellow-400 text-indigo-950 shadow-yellow-500/30 ring-2 ring-yellow-300'
+                  : 'bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white'
+              }`}
+            >
+              <span>Next R{currentRound.roundNumber + 1}</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
       </div>

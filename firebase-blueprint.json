@@ -9,10 +9,6 @@
           "type": "string",
           "description": "Session code (e.g. 4821, BDM-4821)"
         },
-        "clubId": {
-          "type": "string",
-          "description": "ID of parent club/squad owning this session"
-        },
         "config": {
           "type": "object",
           "description": "Session configuration including sport, match format, courts, points, and timers"
@@ -124,96 +120,9 @@
         "losses": {
           "type": "number",
           "description": "Total matches lost"
-        },
-        "authUid": {
-          "type": "string",
-          "description": "Firebase Auth user identifier (anonymous or permanent)"
-        },
-        "avatarColor": {
-          "type": "string",
-          "description": "Theme avatar color"
-        },
-        "clubIds": {
-          "type": "array",
-          "description": "List of club/squad IDs player is associated with",
-          "items": { "type": "string" }
-        },
-        "createdAt": {
-          "type": "number",
-          "description": "Profile creation timestamp"
-        },
-        "updatedAt": {
-          "type": "number",
-          "description": "Profile last update timestamp"
         }
       },
       "required": ["id", "name"]
-    },
-    "clubs": {
-      "title": "Club",
-      "description": "Squad, team, or recurring group that owns multiple sessions and maintains member player identities",
-      "type": "object",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique club identifier"
-        },
-        "name": {
-          "type": "string",
-          "description": "Club or squad display name (e.g. Tuesday Night Badminton)"
-        },
-        "code": {
-          "type": "string",
-          "description": "Short join code reusing the 4-digit PIN pattern"
-        },
-        "createdByUid": {
-          "type": "string",
-          "description": "Firebase Auth UID of the creator"
-        },
-        "memberProfileIds": {
-          "type": "array",
-          "description": "Array of member player profile IDs"
-        },
-        "sessionIds": {
-          "type": "array",
-          "description": "Array of session IDs owned by this club"
-        },
-        "createdAt": {
-          "type": "number",
-          "description": "Creation timestamp in milliseconds"
-        },
-        "updatedAt": {
-          "type": "number",
-          "description": "Last updated timestamp in milliseconds"
-        },
-        "description": {
-          "type": "string",
-          "description": "Optional squad description or notes"
-        },
-        "sport": {
-          "type": "string",
-          "description": "Sport type"
-        }
-      },
-      "required": ["id", "name", "code", "createdAt"]
-    }
-  },
-  "firestore": {
-    "/sessions/{sessionId}": {
-      "schema": "sessions",
-      "description": "Tournament and open play session documents"
-    },
-    "/clubs/{clubId}": {
-      "schema": "clubs",
-      "description": "Club squads collection owning sessions and member rosters"
-    },
-    "/users/{userId}": {
-      "schema": "users",
-      "description": "User accounts and organizer profiles"
-    },
-    "/playerProfiles/{profileId}": {
-      "schema": "playerProfiles",
-      "description": "Cross-session player identity profiles"
     }
   },
   "securityRules": {

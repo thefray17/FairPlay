@@ -1,5 +1,5 @@
 import React from 'react';
-import { FairnessMetric, SessionConfig, Club } from '../types';
+import { FairnessMetric, SessionConfig } from '../types';
 import {
   Trophy,
   LayoutGrid,
@@ -7,18 +7,15 @@ import {
   Users,
   Settings,
   ShieldCheck,
-  Shield,
   RotateCcw,
   Sparkles,
   Smartphone,
   Share2,
   Flame,
-  Swords,
-  Layers,
 } from 'lucide-react';
 import { PWAInstallButton } from './common/PWAInstallButton';
 
-export type TabType = 'active' | 'standings' | 'groups' | 'bracket' | 'history' | 'players';
+export type TabType = 'active' | 'standings' | 'history' | 'players';
 
 interface NavbarProps {
   currentTab: TabType;
@@ -33,10 +30,6 @@ interface NavbarProps {
   onOpenTransfer: () => void;
   isSyncing?: boolean;
   onNavigateToOpenPlay?: () => void;
-  hasActiveBracket?: boolean;
-  hasActiveGroupStage?: boolean;
-  activeClub?: Club | null;
-  onOpenClubModal?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -52,10 +45,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenTransfer,
   isSyncing,
   onNavigateToOpenPlay,
-  hasActiveBracket,
-  hasActiveGroupStage,
-  activeClub,
-  onOpenClubModal,
 }) => {
   return (
     <header className="sticky top-0 z-30 bg-indigo-600 text-white shadow-md">
@@ -100,42 +89,6 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* PWA Install Button (auto-hides when standalone or unpromptable) */}
             <PWAInstallButton variant="navbar" />
-
-            {/* Club / Squad Button */}
-            {onOpenClubModal && (
-              <button
-                type="button"
-                id="btn-navbar-club"
-                onClick={onOpenClubModal}
-                className={`inline-flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-xl font-bold text-xs transition-all shadow-xs active:scale-95 cursor-pointer shrink-0 border ${
-                  activeClub
-                    ? 'bg-indigo-500/90 hover:bg-indigo-400 text-white border-indigo-300/40'
-                    : 'bg-indigo-700/60 hover:bg-indigo-700 text-indigo-200 border-indigo-500/40'
-                }`}
-                title={
-                  activeClub
-                    ? `Active Squad: ${activeClub.name} (PIN: ${activeClub.code})`
-                    : 'Join or Create a Club / Squad'
-                }
-                aria-label={
-                  activeClub
-                    ? `Active Squad: ${activeClub.name}`
-                    : 'Join or Create a Club / Squad'
-                }
-              >
-                <Shield className={`w-3.5 h-3.5 shrink-0 ${activeClub ? 'text-yellow-300' : 'text-indigo-300'}`} />
-                {activeClub ? (
-                  <>
-                    <span className="hidden md:inline max-w-[100px] truncate font-bold">{activeClub.name}</span>
-                    <span className="font-mono text-[10px] bg-indigo-900/50 px-1 py-0.5 rounded text-yellow-300 font-bold">
-                      {activeClub.code}
-                    </span>
-                  </>
-                ) : (
-                  <span className="text-[11px] sm:text-xs">Squad</span>
-                )}
-              </button>
-            )}
 
             {/* Session ID & Transfer Handover Button */}
             <button
@@ -192,44 +145,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-yellow-400 text-indigo-950 font-black">
               Live
             </span>
-          </button>
-
-          <button
-            type="button"
-            id="tab-groups"
-            onClick={() => onTabChange('groups')}
-            className={`flex items-center gap-2 py-1.5 transition-colors whitespace-nowrap cursor-pointer ${
-              currentTab === 'groups'
-                ? 'border-b-2 border-yellow-400 pb-1 text-white font-black'
-                : 'text-indigo-200 hover:text-white'
-            }`}
-          >
-            <Layers className="w-4 h-4 text-yellow-400" />
-            <span>Group Stage</span>
-            {hasActiveGroupStage && (
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-400 text-indigo-950 font-black">
-                Pools
-              </span>
-            )}
-          </button>
-
-          <button
-            type="button"
-            id="tab-bracket"
-            onClick={() => onTabChange('bracket')}
-            className={`flex items-center gap-2 py-1.5 transition-colors whitespace-nowrap cursor-pointer ${
-              currentTab === 'bracket'
-                ? 'border-b-2 border-yellow-400 pb-1 text-white font-black'
-                : 'text-indigo-200 hover:text-white'
-            }`}
-          >
-            <Swords className="w-4 h-4 text-yellow-400" />
-            <span>Playoff Bracket</span>
-            {hasActiveBracket && (
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-400 text-emerald-950 font-black">
-                Active
-              </span>
-            )}
           </button>
 
           <button
