@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { PWAInstallButton } from './common/PWAInstallButton';
 
-export type TabType = 'active' | 'standings' | 'history' | 'players';
+export type TabType = 'matches' | 'active' | 'standings' | 'players' | 'history';
 
 interface NavbarProps {
   currentTab: TabType;
@@ -110,24 +110,40 @@ export const Navbar: React.FC<NavbarProps> = ({
           <button
             type="button"
             id="tab-active-courts"
-            onClick={() => onTabChange('active')}
+            onClick={() => onTabChange('matches')}
             className={`flex items-center gap-2 py-1.5 transition-colors whitespace-nowrap cursor-pointer ${
-              currentTab === 'active'
+              currentTab === 'matches' || currentTab === 'active'
                 ? 'border-b-2 border-yellow-400 pb-1 text-white font-black'
                 : 'text-indigo-200 hover:text-white'
             }`}
           >
             <LayoutGrid className="w-4 h-4" />
-            <span>Live Matches</span>
+            <span>Matches</span>
             {roundsCount > 0 && (
               <span
                 className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
-                  currentTab === 'active' ? 'bg-yellow-400 text-indigo-950' : 'bg-indigo-800 text-indigo-200'
+                  currentTab === 'matches' || currentTab === 'active'
+                    ? 'bg-yellow-400 text-indigo-950'
+                    : 'bg-indigo-800 text-indigo-200'
                 }`}
               >
-                R{roundsCount}
+                {roundsCount} {roundsCount === 1 ? 'Round' : 'Rounds'}
               </span>
             )}
+          </button>
+
+          <button
+            type="button"
+            id="tab-history"
+            onClick={() => onTabChange('history')}
+            className={`flex items-center gap-2 py-1.5 transition-colors whitespace-nowrap cursor-pointer ${
+              currentTab === 'history'
+                ? 'border-b-2 border-yellow-400 pb-1 text-white font-black'
+                : 'text-indigo-200 hover:text-white'
+            }`}
+          >
+            <History className="w-4 h-4 text-amber-300" />
+            <span>History</span>
           </button>
 
           <button
@@ -144,23 +160,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span>Standings</span>
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-yellow-400 text-indigo-950 font-black">
               Live
-            </span>
-          </button>
-
-          <button
-            type="button"
-            id="tab-history"
-            onClick={() => onTabChange('history')}
-            className={`flex items-center gap-2 py-1.5 transition-colors whitespace-nowrap cursor-pointer ${
-              currentTab === 'history'
-                ? 'border-b-2 border-yellow-400 pb-1 text-white font-black'
-                : 'text-indigo-200 hover:text-white'
-            }`}
-          >
-            <History className="w-4 h-4" />
-            <span>Match History</span>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-800 text-indigo-200 font-bold">
-              {roundsCount}
             </span>
           </button>
 

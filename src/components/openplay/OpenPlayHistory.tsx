@@ -112,8 +112,8 @@ export const OpenPlayHistory: React.FC<OpenPlayHistoryProps> = ({
           </div>
         ) : (
           history.map((m) => {
-            const team1Names = m.team1.map((id) => playerRegistry[id]?.name || 'Player').join(' & ');
-            const team2Names = m.team2.map((id) => playerRegistry[id]?.name || 'Player').join(' & ');
+            const team1Names = m.team1.map((id: string) => playerRegistry[id]?.name || 'Player').join(' & ');
+            const team2Names = m.team2.map((id: string) => playerRegistry[id]?.name || 'Player').join(' & ');
             const isTeam1Winner = m.score1 > m.score2;
             const isTeam2Winner = m.score2 > m.score1;
             const isEditing = editingMatchId === m.id;

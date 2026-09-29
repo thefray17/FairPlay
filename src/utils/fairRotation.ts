@@ -838,7 +838,8 @@ export function generateNextFairRound(params: {
   const { players, rounds, courtsCount, playersPerTeam } = params;
   const activePlayers = players.filter((p) => p.active);
   const matchCapacity = playersPerTeam * 2;
-  const roundNumber = rounds.length + 1;
+  const maxExistingRoundNumber = rounds.reduce((max, r) => Math.max(max, r.roundNumber || 0), 0);
+  const roundNumber = maxExistingRoundNumber > 0 ? maxExistingRoundNumber + 1 : rounds.length + 1;
 
   if (activePlayers.length < matchCapacity || courtsCount <= 0) {
     return {
@@ -1616,6 +1617,8 @@ export function getTeamVsTeamRecord(
 
   rounds.forEach((round) => {
     round.matches.forEach((match) => {
+      if (!match.completed) return; // Finished matches only
+
       const t1 = match.team1.playerIds || [];
       const t2 = match.team2.playerIds || [];
 
@@ -1648,7 +1651,7 @@ export function getTeamVsTeamRecord(
         matches.push({
           matchId: match.id,
           roundNumber: match.roundNumber,
-          courtNumber: match.courtNumber,
+          courtNumber: match.courtNumber || 1,
           team1PlayerIds: t1,
           team2PlayerIds: t2,
           score1: match.score1,
@@ -1681,7 +1684,7 @@ export function getTeamVsTeamRecord(
         matches.push({
           matchId: match.id,
           roundNumber: match.roundNumber,
-          courtNumber: match.courtNumber,
+          courtNumber: match.courtNumber || 1,
           team1PlayerIds: t2,
           team2PlayerIds: t1,
           score1: match.score2,
@@ -1734,6 +1737,8 @@ export function getPastTeamMatchups(rounds: Round[]): PastTeamMatchupOption[] {
 
   rounds.forEach((round) => {
     round.matches.forEach((match) => {
+      if (!match.completed) return;
+
       const t1 = match.team1.playerIds || [];
       const t2 = match.team2.playerIds || [];
       if (t1.length >= 2 && t2.length >= 2) {
@@ -1749,7 +1754,7 @@ export function getPastTeamMatchups(rounds: Round[]): PastTeamMatchupOption[] {
           list.push({
             key: comboKey,
             roundNumber: match.roundNumber,
-            courtNumber: match.courtNumber,
+            courtNumber: match.courtNumber || 1,
             team1Ids: [p1, p2],
             team2Ids: [p3, p4],
             score1: match.score1,
@@ -2486,14 +2491,14 @@ export function autoReplacePlayerInRound({
   for (const m of round.matches) {
     if (m.completed) continue;
     if (m.team1.playerIds.includes(targetPlayerId)) {
-      foundCourtNumber = m.courtNumber;
+      foundCourtNumber = m.courtNumber || 0;
       foundTeamNumber = 1;
       foundMatchId = m.id;
       remainingTeammateId = m.team1.playerIds.find((id) => id !== targetPlayerId);
       break;
     }
     if (m.team2.playerIds.includes(targetPlayerId)) {
-      foundCourtNumber = m.courtNumber;
+      foundCourtNumber = m.courtNumber || 0;
       foundTeamNumber = 2;
       foundMatchId = m.id;
       remainingTeammateId = m.team2.playerIds.find((id) => id !== targetPlayerId);
@@ -3197,3 +3202,176 @@ export function sanitizeUpcomingMatches(
   return { sanitized: current, replacements: allReplacements };
 }
 
+export interface BatchFairnessCheckResult {
+  isValid: boolean;
+  warnings: string[];
+  playerAppearances: Record<string, number>;
+  minAppearances: number;
+  maxAppearances: number;
+  spread: number;
+}
+
+export interface BatchGenerationResult {
+  newRounds: Round[];
+  validation: BatchFairnessCheckResult;
+}
+
+/**
+ * Validates batch fairness across generated rounds:
+ * 1. Checks that total appearances across the batch differ by at most 1.
+ * 2. Checks round-completion ordering across consecutive round pairs:
+ *    no player receives their (k+1)-th appearance if another active player
+ *    has a lower play count through round k and was benched.
+ */
+export function verifyBatchFairness(params: {
+  players: Player[];
+  existingRounds: Round[];
+  newRounds: Round[];
+  courtsCount: number;
+  activePlayerIds?: string[];
+}): BatchFairnessCheckResult {
+  const { players, existingRounds, newRounds, courtsCount, activePlayerIds } = params;
+  const activePlayers = players.filter((p) => {
+    if (activePlayerIds && activePlayerIds.length > 0) {
+      return activePlayerIds.includes(p.id);
+    }
+    return p.active;
+  });
+
+  const warnings: string[] = [];
+  const playerAppearances: Record<string, number> = {};
+
+  activePlayers.forEach((p) => {
+    playerAppearances[p.id] = 0;
+  });
+
+  newRounds.forEach((round) => {
+    round.matches.forEach((match) => {
+      [...match.team1.playerIds, ...match.team2.playerIds].forEach((pid) => {
+        if (playerAppearances[pid] !== undefined) {
+          playerAppearances[pid]++;
+        }
+      });
+    });
+  });
+
+  const counts = Object.values(playerAppearances);
+  const minAppearances = counts.length > 0 ? Math.min(...counts) : 0;
+  const maxAppearances = counts.length > 0 ? Math.max(...counts) : 0;
+  const spread = maxAppearances - minAppearances;
+
+  // Check 1: Batch-wide appearance equality
+  if (spread > 1) {
+    warnings.push(
+      `Total matches spread notice: Active players play between ${minAppearances} and ${maxAppearances} matches across this ${newRounds.length}-round batch (spread: ${spread}). Odd player count (${activePlayers.length} players) with ${courtsCount} courts requires staggered rest.`
+    );
+  }
+
+  // Check 2: Round-completion ordering between consecutive round pairs
+  const seenOrderingWarnings = new Set<string>();
+  for (let rIdx = 0; rIdx < newRounds.length - 1; rIdx++) {
+    const roundKPlus1 = newRounds[rIdx + 1];
+    const priorRounds = [...existingRounds, ...newRounds.slice(0, rIdx + 1)];
+    const playCountsThroughK = getPlayerMatchCounts(activePlayers, priorRounds);
+
+    const playersInKPlus1 = new Set<string>();
+    for (const m of roundKPlus1.matches) {
+      for (const pid of [...m.team1.playerIds, ...m.team2.playerIds]) {
+        playersInKPlus1.add(pid);
+      }
+    }
+
+    for (const p of activePlayers) {
+      if (playersInKPlus1.has(p.id)) {
+        const pCountThroughK = playCountsThroughK[p.id] || 0;
+        for (const q of activePlayers) {
+          const qCountThroughK = playCountsThroughK[q.id] || 0;
+          if (!playersInKPlus1.has(q.id) && pCountThroughK > qCountThroughK) {
+            const warningKey = `r${roundKPlus1.roundNumber}-${p.id}-${q.id}`;
+            if (!seenOrderingWarnings.has(warningKey)) {
+              seenOrderingWarnings.add(warningKey);
+              warnings.push(
+                `Round ${roundKPlus1.roundNumber} ordering notice: ${p.name} (played ${pCountThroughK} prior) was scheduled while ${q.name} (${qCountThroughK} prior) rests. Player roster count (${activePlayers.length}) and court capacity (${courtsCount}) require rotational resting.`
+              );
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return {
+    isValid: warnings.length === 0,
+    warnings,
+    playerAppearances,
+    minAppearances,
+    maxAppearances,
+    spread,
+  };
+}
+
+/**
+ * Sequential Multi-Round Generator for Social Play:
+ * Generates N rounds in sequence, passing the fully accumulated rounds array
+ * (all existing session rounds + all previously generated rounds in this batch)
+ * into each subsequent call to generateNextFairRound.
+ *
+ * This ensures partner/opponent history, game counts, and rest rotation
+ * carry forward across every newly generated round.
+ */
+export function generateBatchFairRounds(params: {
+  players: Player[];
+  rounds: Round[];
+  courtsCount: number;
+  playersPerTeam: number;
+  roundCount: number;
+  activePlayerIds?: string[];
+  onDeckMatch?: UpcomingMatch;
+}): BatchGenerationResult {
+  const {
+    players,
+    rounds,
+    courtsCount,
+    playersPerTeam,
+    roundCount,
+    activePlayerIds,
+    onDeckMatch,
+  } = params;
+
+  // Filter or adjust active state based on activePlayerIds if specified
+  const effectivePlayers = activePlayerIds
+    ? players.map((p) => ({
+        ...p,
+        active: activePlayerIds.includes(p.id),
+      }))
+    : players;
+
+  const accumulatedRounds = [...rounds];
+  const newRounds: Round[] = [];
+
+  for (let i = 0; i < roundCount; i++) {
+    const nextRound = generateNextFairRound({
+      players: effectivePlayers,
+      rounds: accumulatedRounds,
+      courtsCount,
+      playersPerTeam,
+      onDeckMatch: i === 0 ? onDeckMatch : undefined,
+    });
+
+    accumulatedRounds.push(nextRound);
+    newRounds.push(nextRound);
+  }
+
+  const validation = verifyBatchFairness({
+    players: effectivePlayers,
+    existingRounds: rounds,
+    newRounds,
+    courtsCount,
+    activePlayerIds,
+  });
+
+  return {
+    newRounds,
+    validation,
+  };
+}

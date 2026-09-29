@@ -1,41 +1,52 @@
 import React, { useState, useMemo } from 'react';
-import { FairnessMetric, Player, Round, SessionConfig, StandingsRow, UpcomingMatch } from '../types';
-import { CourtCard } from './CourtCard';
+import {
+  FairnessMetric,
+  Player,
+  Round,
+  SessionConfig,
+  StandingsRow,
+  UpcomingMatch,
+  BatchGenerationConfig,
+  Match,
+} from '../types';
+import { CompactMatchRow } from './CompactMatchRow';
+import { FloatingMatchWindow } from './FloatingMatchWindow';
 import { EditLineupModal } from './EditLineupModal';
 import {
-  ArrowLeft,
-  ArrowRight,
   ShieldCheck,
   Coffee,
   Sparkles,
   RotateCw,
   Users,
   UserPlus,
-  Link2,
   CheckCircle2,
   Scale,
   AlertTriangle,
   X,
+  Layers,
+  Clock,
+  PlusCircle,
+  Sliders,
+  ArrowRight,
+  Flame,
+  Play,
 } from 'lucide-react';
 import { soundFx } from '../utils/audio';
 import {
   getHistoryMatrices,
-  getPartnershipCoverage,
   calculateFairnessMetric,
 } from '../utils/fairRotation';
 
 interface ActiveRoundViewProps {
-  currentRound: Round | null;
+  currentRound?: Round | null;
   rounds?: Round[];
-  roundsCount: number;
-  activeRoundIndex?: number;
-  onSelectRound?: (roundNumber: number) => void;
+  roundsCount?: number;
   players: Player[];
   playersMap: Record<string, Player>;
   config: SessionConfig;
   fairness?: FairnessMetric;
   upcomingMatches?: UpcomingMatch[];
-  standings: StandingsRow[];
+  standings?: StandingsRow[];
   playerMatchCounts: Record<string, number>;
   onGenerateNextRound: () => void;
   onRegenerateCurrentRound?: (roundNumber?: number) => void;
@@ -51,20 +62,20 @@ interface ActiveRoundViewProps {
   onBenchAndReplacePlayer?: (matchId: string, playerId: string) => void;
   onStartMatch?: (matchId: string) => void;
   onShuffleLineup?: (matchId: string) => void;
+  onOpenBatchGenerator?: () => void;
+  onQuickGenerateMore?: () => void;
+  lastBatchConfig?: BatchGenerationConfig | null;
+  onDeleteMatch?: (matchId: string) => void;
+  onDeleteRound?: (roundNumber: number) => void;
 }
 
 export const ActiveRoundView: React.FC<ActiveRoundViewProps> = ({
-  currentRound,
   rounds = [],
-  roundsCount,
-  activeRoundIndex = rounds.length > 0 ? rounds.length - 1 : 0,
-  onSelectRound,
   players,
   playersMap,
   config,
   fairness,
   upcomingMatches = [],
-  standings,
   playerMatchCounts,
   onGenerateNextRound,
   onRegenerateCurrentRound,
@@ -72,76 +83,115 @@ export const ActiveRoundView: React.FC<ActiveRoundViewProps> = ({
   onCompleteMatch,
   onReopenMatch,
   onUpdateMatchLineup,
-  onUpdateNextMatch,
-  onResetNextMatch,
   onNavigateToSquad,
   onOpenFairnessModal,
-  onViewFullStandings,
   onBenchAndReplacePlayer,
   onStartMatch,
   onShuffleLineup,
+  onOpenBatchGenerator,
+  onQuickGenerateMore,
+  lastBatchConfig,
+  onDeleteMatch,
+  onDeleteRound,
 }) => {
+  const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
   const [editingMatchId, setEditingMatchId] = useState<string | null>(null);
-  const [showConfirmRegenerate, setShowConfirmRegenerate] = useState(false);
+  const [showConfirmRegenerate, setShowConfirmRegenerate] = useState<number | null>(null);
   const [isRecalculating, setIsRecalculating] = useState(false);
-  const [recalculatedToast, setRecalculatedToast] = useState(false);
+  const [recalculatedToast, setRecalculatedToast] = useState<string | null>(null);
 
-  const hasStartedMatches = useMemo(() => {
-    if (!currentRound) return false;
-    return (currentRound.matches || []).some(
-      (m) => m.completed || (m.score1 && m.score1 > 0) || (m.score2 && m.score2 > 0) || m.status === 'in_progress'
-    );
-  }, [currentRound]);
-
-  const executeRegenerate = () => {
-    if (!onRegenerateCurrentRound || !currentRound) return;
-    setIsRecalculating(true);
-    onRegenerateCurrentRound(currentRound.roundNumber);
-    setShowConfirmRegenerate(false);
-    setRecalculatedToast(true);
-    setTimeout(() => {
-      setIsRecalculating(false);
-    }, 600);
-    setTimeout(() => {
-      setRecalculatedToast(false);
-    }, 4000);
-  };
-
-  const handleRegenerateClick = () => {
-    setShowConfirmRegenerate(true);
-  };
-
-  const activePlayers = players.filter((p) => p.active);
+  const activePlayers = useMemo(() => players.filter((p) => p.active), [players]);
   const playersPerMatch = config.playersPerTeam * 2;
-  const totalSlotsNeeded = config.courtsCount * playersPerMatch;
 
   const fairnessMetric = useMemo(
     () => fairness || calculateFairnessMetric(players, rounds),
     [fairness, players, rounds]
   );
   const { partnerCount } = useMemo(() => getHistoryMatrices(rounds), [rounds]);
-  const partnershipCoverage = useMemo(() => getPartnershipCoverage(players, rounds), [players, rounds]);
 
-  // Active round data and match memoizations (Hooks must be called unconditionally)
-  const roundMatches = currentRound?.matches || [];
-  const playingPlayerIds = useMemo(() => {
-    const set = new Set<string>();
-    roundMatches.forEach((m) => {
-      m.team1.playerIds.forEach((id) => set.add(id));
-      m.team2.playerIds.forEach((id) => set.add(id));
+  // Flatten all matches in chronological order across the entire session
+  const allMatchesInSession = useMemo(() => {
+    const list: { match: Match; roundNumber: number }[] = [];
+    rounds.forEach((round) => {
+      round.matches.forEach((match) => {
+        list.push({ match, roundNumber: round.roundNumber });
+      });
     });
-    return set;
-  }, [roundMatches]);
+    return list;
+  }, [rounds]);
 
-  const unassignedActivePlayers = useMemo(
-    () => activePlayers.filter((p) => !playingPlayerIds.has(p.id)),
-    [activePlayers, playingPlayerIds]
-  );
+  // Find currently selected match item for floating window
+  const selectedMatchItem = useMemo(() => {
+    if (!selectedMatchId) return null;
+    return allMatchesInSession.find((item) => item.match.id === selectedMatchId) || null;
+  }, [allMatchesInSession, selectedMatchId]);
 
-  // Active match being edited
-  const editingActiveMatch = currentRound?.matches?.find((m) => m.id === editingMatchId) || null;
+  // Identify the live round for informational display only
+  const liveRound = useMemo(() => {
+    return rounds.find((r) => !r.completed && r.matches.some((m) => !m.completed)) || null;
+  }, [rounds]);
+  const liveRoundNumber = liveRound ? liveRound.roundNumber : null;
 
-  // If zero players exist in the tournament session
+  // Active match being edited via lineup modal
+  const editingActiveMatch = useMemo(() => {
+    if (!editingMatchId) return null;
+    for (const r of rounds) {
+      const found = r.matches.find((m) => m.id === editingMatchId);
+      if (found) return found;
+    }
+    return null;
+  }, [rounds, editingMatchId]);
+
+  // Calculate unassigned players for the latest incomplete round
+  const unassignedActivePlayers = useMemo(() => {
+    if (!liveRound) return [];
+    const playingIds = new Set<string>();
+    liveRound.matches.forEach((m) => {
+      m.team1.playerIds.forEach((id) => playingIds.add(id));
+      m.team2.playerIds.forEach((id) => playingIds.add(id));
+    });
+    return activePlayers.filter((p) => !playingIds.has(p.id));
+  }, [liveRound, activePlayers]);
+
+  const executeRegenerate = (roundNum: number) => {
+    if (!onRegenerateCurrentRound) return;
+    setIsRecalculating(true);
+    onRegenerateCurrentRound(roundNum);
+    setShowConfirmRegenerate(null);
+    setRecalculatedToast(`Round ${roundNum} matches recalculated!`);
+    setTimeout(() => {
+      setIsRecalculating(false);
+    }, 600);
+    setTimeout(() => {
+      setRecalculatedToast(null);
+    }, 4000);
+  };
+
+  // Next batch calculation for Quick Generate CTA
+  const maxExistingRoundNumber = useMemo(() => {
+    return rounds.reduce((max, r) => Math.max(max, r.roundNumber || 0), 0);
+  }, [rounds]);
+
+  const nextBatchStartRound = maxExistingRoundNumber + 1;
+  const nextBatchEndRound = maxExistingRoundNumber + (lastBatchConfig?.roundCount || 1);
+
+  const rosterHasChanged = useMemo(() => {
+    if (!lastBatchConfig?.activePlayerIds) return true;
+    const currentActiveIds = activePlayers.map((p) => p.id).sort();
+    const lastActiveIds = [...lastBatchConfig.activePlayerIds].sort();
+    if (currentActiveIds.length !== lastActiveIds.length) return true;
+    return currentActiveIds.some((id, idx) => id !== lastActiveIds[idx]);
+  }, [activePlayers, lastBatchConfig]);
+
+  const handleGenerateMoreClick = () => {
+    if (lastBatchConfig && !rosterHasChanged && onQuickGenerateMore) {
+      onQuickGenerateMore();
+    } else if (onOpenBatchGenerator) {
+      onOpenBatchGenerator();
+    }
+  };
+
+  // 1. Empty State: No players in session
   if (players.length === 0) {
     return (
       <div id="zero-players-container" className="py-12 px-4 max-w-lg mx-auto text-center">
@@ -170,11 +220,8 @@ export const ActiveRoundView: React.FC<ActiveRoundViewProps> = ({
     );
   }
 
-  // If no round generated yet
-  if (!currentRound) {
-    const willBenchCount = Math.max(0, activePlayers.length - totalSlotsNeeded);
-    const willPlayCount = Math.min(activePlayers.length, totalSlotsNeeded);
-
+  // 2. Empty State: Players ready, no rounds generated yet
+  if (rounds.length === 0) {
     return (
       <div id="no-round-container" className="py-10 px-4 max-w-2xl mx-auto text-center">
         <div className="w-16 h-16 rounded-2xl bg-yellow-400 text-indigo-950 flex items-center justify-center mx-auto mb-4 shadow-md font-black">
@@ -182,7 +229,7 @@ export const ActiveRoundView: React.FC<ActiveRoundViewProps> = ({
         </div>
 
         <h2 className="text-2xl sm:text-3xl font-black text-indigo-950 tracking-tight mb-2">
-          Ready for Round 1
+          Ready to Play
         </h2>
 
         <p className="text-sm font-semibold text-slate-600 mb-6 leading-relaxed">
@@ -227,252 +274,81 @@ export const ActiveRoundView: React.FC<ActiveRoundViewProps> = ({
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           <button
             type="button"
-            id="btn-start-session-generate-r1"
+            id="btn-generate-matches-initial"
             onClick={() => {
               soundFx.playWhistle();
-              onGenerateNextRound();
+              if (onOpenBatchGenerator) {
+                onOpenBatchGenerator();
+              } else {
+                onGenerateNextRound();
+              }
             }}
             disabled={activePlayers.length < playersPerMatch}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-black text-sm uppercase tracking-wider shadow-lg hover:shadow-indigo-300 transition-all cursor-pointer"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-8 py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-black text-sm uppercase tracking-wider shadow-lg hover:shadow-indigo-300 transition-all cursor-pointer active:scale-98"
           >
-            <RotateCw className="w-4 h-4" /> Start Round 1
+            <Play className="w-4 h-4 fill-current text-yellow-300" />
+            <span>Generate Matches</span>
           </button>
-
-          {onNavigateToSquad && (
-            <button
-              type="button"
-              id="btn-r1-manage-squad"
-              onClick={onNavigateToSquad}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-4 rounded-2xl bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 font-bold text-sm transition-all cursor-pointer shadow-xs"
-            >
-              <Users className="w-4 h-4 text-indigo-600" /> Manage Squad &amp; Bench
-            </button>
-          )}
         </div>
-
-        {activePlayers.length < playersPerMatch && (
-          <p className="text-xs text-rose-600 mt-2 font-bold">
-            Need at least {playersPerMatch} active players to start a {config.format} match.
-          </p>
-        )}
       </div>
     );
   }
 
-  // Active round exists
-  const completedMatchesCount = roundMatches.filter((m) => m.completed).length;
-  const allMatchesCompleted =
-    roundMatches.length > 0 && completedMatchesCount === roundMatches.length;
-
-  // Resting players info
-  const restingPlayerIds = currentRound.restingPlayerIds || [];
-  const restingPlayers = restingPlayerIds
-    .map((id) => playersMap[id])
-    .filter(Boolean);
-
-  const totalCompletedMatches = roundsCount > 0
-    ? standings.reduce((sum, r) => sum + r.matchesPlayed, 0) / (config.playersPerTeam * 2)
-    : 0;
-
-  const isViewingPastRound = activeRoundIndex < rounds.length - 1;
+  // 3. Compact Timeline Schedule View: Shows EVERY round in a compact list with floating officiating window
+  const completedRoundsCount = rounds.filter((r) => r.completed || r.matches.every((m) => m.completed)).length;
 
   return (
-    <div id="active-round-view" className="space-y-3.5 sm:space-y-4">
-      {/* Round Navigation Bar (Allows going back to previous rounds) */}
-      {rounds.length > 1 && (
-        <div
-          id="round-navigation-bar"
-          className="flex items-center justify-between gap-2 bg-white px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl sm:rounded-2xl border border-slate-200 shadow-xs"
-        >
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-            <button
-              type="button"
-              id="btn-prev-round"
-              disabled={activeRoundIndex <= 0}
-              onClick={() => {
-                if (activeRoundIndex > 0) {
-                  soundFx.playPointChime();
-                  onSelectRound?.(rounds[activeRoundIndex - 1].roundNumber);
-                }
-              }}
-              className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl font-black text-xs transition-all ${
-                activeRoundIndex > 0
-                  ? 'bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-800 cursor-pointer shadow-2xs'
-                  : 'bg-slate-50 text-slate-300 cursor-not-allowed border border-slate-100'
-              }`}
-              title="Go back to previous round"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Previous Round</span>
-              <span className="sm:hidden">Prev</span>
-            </button>
+    <div id="unified-schedule-view" className="space-y-6 sm:space-y-8 pb-12">
+      {/* Schedule Top Control & Overview Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 sm:p-5 rounded-2xl sm:rounded-3xl border border-slate-200 shadow-xs">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-black shrink-0 shadow-sm shadow-indigo-200">
+            <Flame className="w-5 h-5 text-yellow-300 fill-yellow-300" />
           </div>
-
-          {/* Round Pills Carousel */}
-          <div className="flex items-center gap-1.5 overflow-x-auto py-0.5 max-w-[55vw] sm:max-w-none scrollbar-none">
-            {rounds.map((r, rIdx) => {
-              const isSelected = rIdx === activeRoundIndex;
-              const isLatest = rIdx === rounds.length - 1;
-              const isDone = r.completed || (r.matches.length > 0 && r.matches.every((m) => m.completed));
-
-              return (
-                <button
-                  key={`round-nav-pill-${r.roundNumber}`}
-                  type="button"
-                  id={`btn-round-nav-${r.roundNumber}`}
-                  onClick={() => {
-                    soundFx.playPointChime();
-                    onSelectRound?.(r.roundNumber);
-                  }}
-                  className={`px-3 py-1.5 rounded-xl font-black text-xs transition-all flex items-center gap-1.5 shrink-0 cursor-pointer ${
-                    isSelected
-                      ? 'bg-indigo-600 text-white shadow-xs ring-2 ring-indigo-300'
-                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                  }`}
-                >
-                  <span>Round {r.roundNumber}</span>
-                  {isDone ? (
-                    <span className={`text-[10px] ${isSelected ? 'text-indigo-200' : 'text-green-600'}`}>✓</span>
-                  ) : isLatest ? (
-                    <span
-                      className={`text-[9px] px-1.5 py-0.2 rounded-full font-black uppercase tracking-tight ${
-                        isSelected ? 'bg-yellow-400 text-indigo-950' : 'bg-black text-yellow-300'
-                      }`}
-                    >
-                      Active
-                    </span>
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-            {isViewingPastRound ? (
-              <button
-                type="button"
-                id="btn-next-round-step"
-                onClick={() => {
-                  soundFx.playPointChime();
-                  onSelectRound?.(rounds[activeRoundIndex + 1].roundNumber);
-                }}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl font-black text-xs bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-800 transition-all cursor-pointer shadow-2xs"
-                title="Go to next round"
-              >
-                <span className="hidden sm:inline">Next Round</span>
-                <span className="sm:hidden">Next</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            ) : (
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 px-2 py-1 bg-slate-100 rounded-lg">
-                Current
-              </span>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Past Round Notice */}
-      {isViewingPastRound && (
-        <div
-          id="viewing-past-round-notice"
-          className="flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl sm:rounded-2xl bg-amber-50 border border-amber-300/80 text-amber-950 text-xs shadow-2xs flex-wrap sm:flex-nowrap"
-        >
-          <div className="flex items-center gap-2 font-medium min-w-0">
-            <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0 animate-pulse" />
-            <span className="truncate">
-              Viewing <strong>Round {currentRound.roundNumber}</strong> history. You can edit scores or review lineups.
-            </span>
-          </div>
-          <button
-            type="button"
-            id="btn-jump-to-latest"
-            onClick={() => {
-              soundFx.playPointChime();
-              onSelectRound?.(rounds[rounds.length - 1].roundNumber);
-            }}
-            className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-black text-xs uppercase tracking-wider shrink-0 transition-all shadow-xs cursor-pointer ml-auto"
-          >
-            Jump to Active (R{rounds[rounds.length - 1].roundNumber}) →
-          </button>
-        </div>
-      )}
-
-      {/* Round Header Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200 shadow-xs">
-        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-          <div className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-indigo-600 text-white font-black text-xs sm:text-sm shadow-xs shrink-0">
-            R{currentRound.roundNumber}
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-              <h2 className="text-sm sm:text-base font-black text-indigo-900 flex items-center gap-1 leading-tight truncate">
-                Round {currentRound.roundNumber}
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-base sm:text-xl font-black text-indigo-950">
+                Match Schedule
               </h2>
-              {allMatchesCompleted ? (
-                <span className="px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-tight bg-green-100 text-green-800 border border-green-200 shrink-0">
-                  All Finished ✓
-                </span>
-              ) : (
-                <span className="px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-wider bg-black text-yellow-300 shrink-0">
-                  {completedMatchesCount}/{roundMatches.length} Done
+              <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-900 border border-indigo-200">
+                {rounds.length} {rounds.length === 1 ? 'Round' : 'Rounds'} Total
+              </span>
+              {liveRoundNumber && (
+                <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-yellow-400 text-indigo-950 border border-yellow-500/40">
+                  Round {liveRoundNumber} In Progress
                 </span>
               )}
             </div>
-            <p className="text-[10px] sm:text-[11px] font-medium text-slate-500 truncate">
-              Target: {config.targetPoints} pts • {isViewingPastRound ? 'Past Round' : 'Live Round'}
+            <p className="text-xs font-semibold text-slate-500 mt-0.5">
+              Every match can be started, edited, and scored at any time • Tap any match to open the match window
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap shrink-0">
-          {/* Recalculate / Redraw Round Matches Button (Always prompts confirmation) */}
-          {onRegenerateCurrentRound && (
+        <div className="flex items-center gap-2 shrink-0">
+          {onOpenBatchGenerator && (
             <button
               type="button"
-              id="btn-header-recalculate-round"
-              onClick={handleRegenerateClick}
-              disabled={isRecalculating}
-              className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 sm:py-2 rounded-lg sm:rounded-xl font-black text-xs uppercase tracking-wider transition-all bg-amber-50 hover:bg-amber-100 active:scale-95 text-amber-900 border border-amber-300/80 cursor-pointer shadow-2xs hover:border-amber-400 shrink-0"
-              title={`Recalculate & redraw fair pairings for Round ${currentRound.roundNumber}`}
-              aria-label={`Recalculate & redraw fair pairings for Round ${currentRound.roundNumber}`}
+              id="btn-schedule-batch-generator"
+              onClick={onOpenBatchGenerator}
+              className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-yellow-400 hover:bg-yellow-300 active:scale-95 text-indigo-950 font-black text-xs uppercase tracking-wider transition-all shadow-xs cursor-pointer"
+              title="Pre-generate more fair rounds"
             >
-              <RotateCw className={`w-3.5 h-3.5 text-amber-700 ${isRecalculating ? 'animate-spin' : ''}`} />
-              <span>Redraw Round</span>
+              <Layers className="w-4 h-4 text-indigo-950" />
+              <span>Batch Setup</span>
             </button>
           )}
 
-          {isViewingPastRound ? (
-            <button
-              type="button"
-              id="btn-header-next-round"
-              onClick={() => {
-                soundFx.playPointChime();
-                onSelectRound?.(rounds[activeRoundIndex + 1].roundNumber);
-              }}
-              className="inline-flex items-center justify-center gap-1 px-3 py-1.5 sm:py-2 rounded-lg sm:rounded-xl font-black text-xs uppercase tracking-wider transition-all bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer shadow-xs shrink-0"
-            >
-              <span>Next (R{rounds[activeRoundIndex + 1].roundNumber})</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          ) : (
-            <button
-              type="button"
-              id="btn-generate-next-round"
-              onClick={() => {
-                soundFx.playWhistle();
-                onGenerateNextRound();
-              }}
-              className={`inline-flex items-center justify-center gap-1 px-3.5 py-1.5 sm:py-2 rounded-lg sm:rounded-xl font-black text-xs uppercase tracking-wider transition-all shadow-xs cursor-pointer shrink-0 ${
-                allMatchesCompleted
-                  ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-200'
-                  : 'bg-slate-800 hover:bg-black text-white'
-              }`}
-            >
-              <span>Next Round</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          )}
+          <button
+            type="button"
+            id="btn-schedule-fairness-audit"
+            onClick={onOpenFairnessModal}
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 active:scale-95 text-indigo-900 border border-indigo-200 text-xs font-black uppercase tracking-wider transition-all cursor-pointer"
+            title="Inspect fairness score and match variety"
+          >
+            <Scale className="w-3.5 h-3.5 text-indigo-600" />
+            <span className="hidden sm:inline">Fairness Audit</span>
+          </button>
         </div>
       </div>
 
@@ -483,151 +359,324 @@ export const ActiveRoundView: React.FC<ActiveRoundViewProps> = ({
           className="p-3 bg-amber-50 border border-amber-300/80 text-amber-950 rounded-xl sm:rounded-2xl flex items-center justify-between gap-3 text-xs font-bold animate-in fade-in slide-in-from-top-2 duration-300 shadow-2xs"
         >
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-6 h-6 rounded-lg bg-amber-200/80 text-amber-900 flex items-center justify-center shrink-0">
+            <div className="w-6 h-6 rounded-lg bg-amber-200 text-amber-900 flex items-center justify-center shrink-0">
               <Sparkles className="w-3.5 h-3.5 text-amber-800" />
             </div>
-            <span className="truncate sm:whitespace-normal">
-              Round {currentRound.roundNumber} matches recalculated! Pairings and court assignments have been freshly drawn.
-            </span>
+            <span>{recalculatedToast} Pairings and courts freshly drawn.</span>
           </div>
           <button
             type="button"
-            onClick={() => setRecalculatedToast(false)}
-            className="text-amber-700 hover:text-amber-900 cursor-pointer p-1 rounded-lg hover:bg-amber-100 transition-colors shrink-0"
+            onClick={() => setRecalculatedToast(null)}
+            className="text-amber-700 hover:text-amber-900 cursor-pointer p-1 rounded-lg hover:bg-amber-100"
             title="Dismiss notification"
-            aria-label="Dismiss notification"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
       )}
 
-      {/* Round Completed Celebration & Action Banner */}
-      {allMatchesCompleted && !isViewingPastRound && (
-        <div
-          id="round-complete-banner"
-          className="bg-emerald-600 text-white rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-sm border border-emerald-500 flex flex-col sm:flex-row items-center justify-between gap-3.5"
-        >
-          <div className="flex items-center gap-3 min-w-0 text-center sm:text-left">
-            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-emerald-700/80 text-white flex items-center justify-center font-black shrink-0">
-              <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6" />
-            </div>
-            <div>
-              <div className="text-sm sm:text-base font-black text-white">
-                Round {currentRound.roundNumber} Finished!
-              </div>
-              <p className="text-[11px] sm:text-xs text-emerald-100 mt-0.5">
-                All matches have concluded. Round {currentRound.roundNumber + 1} will only start or activate once you press Next Round.
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            id="btn-banner-start-next-round"
-            onClick={() => {
-              soundFx.playWhistle();
-              onGenerateNextRound();
-            }}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl sm:rounded-2xl bg-yellow-400 hover:bg-yellow-300 text-indigo-950 font-black text-xs uppercase tracking-wider transition-all shadow-md active:scale-95 cursor-pointer shrink-0"
-          >
-            <span>Next Round (R{currentRound.roundNumber + 1})</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
-        </div>
-      )}
+      {/* Compact Chronological Stream of Every Round in the Tournament */}
+      <div className="space-y-5 sm:space-y-6">
+        {rounds.map((round) => {
+          const isRoundCompleted = round.completed || round.matches.every((m) => m.completed);
+          const isLiveSection = !isRoundCompleted && (liveRoundNumber === null || round.roundNumber === liveRoundNumber);
 
-      {/* Unscheduled / Added Players Alert Banner */}
-      {unassignedActivePlayers.length > 0 && onRegenerateCurrentRound && (
-        <div
-          id="banner-added-players-need-redraw"
-          className="bg-amber-500/10 border border-amber-500/30 rounded-xl sm:rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs animate-in fade-in duration-200"
-        >
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-700 flex items-center justify-center shrink-0">
-              <UserPlus className="w-4 h-4" />
-            </div>
-            <div className="min-w-0">
-              <div className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-1.5 flex-wrap">
-                <span>{unassignedActivePlayers.length} Added Player{unassignedActivePlayers.length > 1 ? 's' : ''} Ready to Play</span>
-                <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-md">
-                  Not in Round {currentRound.roundNumber} yet
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-600 mt-0.5 truncate">
-                Redraw this round to generate all possible matches for everyone with zero benched: {unassignedActivePlayers.map((p) => p.name).join(', ')}
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            id="btn-banner-redraw-for-added-players"
-            onClick={handleRegenerateClick}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-black text-xs uppercase tracking-wider transition-all shadow-xs cursor-pointer shrink-0 active:scale-95"
-          >
-            <RotateCw className="w-3.5 h-3.5" />
-            <span>Redraw Round {currentRound.roundNumber}</span>
-          </button>
-        </div>
-      )}
+          const restingPlayers = (round.restingPlayerIds || [])
+            .map((id) => playersMap[id])
+            .filter(Boolean);
 
-      {/* Courts Grid */}
-      <div className="space-y-4">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-6">
-          {roundMatches.map((match) => (
-            <CourtCard
-              key={match.id}
-              match={match}
-              playersMap={playersMap}
-              config={config}
-              partnerCounts={partnerCount}
-              onUpdateScore={onUpdateScore}
-              onCompleteMatch={onCompleteMatch}
-              onReopenMatch={onReopenMatch}
-              onEditLineup={() => setEditingMatchId(match.id)}
-              onBenchAndReplacePlayer={onBenchAndReplacePlayer}
-              onStartMatch={onStartMatch}
-              onShuffleLineup={onShuffleLineup}
-            />
-          ))}
-        </div>
+          const completedCount = round.matches.filter((m) => m.completed).length;
+
+          return (
+            <section
+              key={`round-section-${round.roundNumber}`}
+              id={`round-section-${round.roundNumber}`}
+              className={`rounded-2xl sm:rounded-3xl border transition-all overflow-hidden bg-white ${
+                isLiveSection
+                  ? 'border-yellow-400/90 shadow-md ring-2 ring-yellow-400/20'
+                  : isRoundCompleted
+                  ? 'border-slate-200 shadow-2xs'
+                  : 'border-slate-200/90 shadow-2xs'
+              }`}
+            >
+              {/* Round Header */}
+              <div
+                className={`p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b ${
+                  isLiveSection
+                    ? 'bg-linear-to-r from-yellow-50 via-white to-indigo-50/40 border-yellow-200'
+                    : isRoundCompleted
+                    ? 'bg-slate-50 border-slate-200 text-slate-800'
+                    : 'bg-indigo-50/40 border-slate-200 text-indigo-950'
+                }`}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div
+                    className={`w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center font-black text-xs shrink-0 shadow-xs ${
+                      isLiveSection
+                        ? 'bg-indigo-600 text-yellow-300 ring-2 ring-yellow-400'
+                        : isRoundCompleted
+                        ? 'bg-slate-700 text-white'
+                        : 'bg-indigo-100 text-indigo-900 border border-indigo-200'
+                    }`}
+                  >
+                    R{round.roundNumber}
+                  </div>
+
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-sm sm:text-base font-black text-slate-900 leading-tight">
+                        Round {round.roundNumber}
+                      </h3>
+
+                      {isRoundCompleted ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-tight bg-emerald-100 text-emerald-800 border border-emerald-200">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-700" /> Finished ({completedCount}/{round.matches.length})
+                        </span>
+                      ) : isLiveSection ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-black text-yellow-300 shadow-xs">
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                          Live Round ({completedCount}/{round.matches.length} Done)
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-800 border border-indigo-200">
+                          <Clock className="w-3 h-3 text-indigo-600" /> Scheduled ({completedCount}/{round.matches.length} Done)
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="text-[11px] font-semibold text-slate-500 mt-0.5">
+                      {round.matches.length} {round.matches.length === 1 ? 'Court Match' : 'Court Matches'} • Target {config.targetPoints} pts
+                    </p>
+                  </div>
+                </div>
+
+                {/* Right Actions for Round */}
+                <div className="flex items-center gap-2">
+                  {onRegenerateCurrentRound && (
+                    <button
+                      type="button"
+                      id={`btn-redraw-round-${round.roundNumber}`}
+                      onClick={() => setShowConfirmRegenerate(round.roundNumber)}
+                      disabled={isRecalculating}
+                      className="inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 active:scale-95 text-amber-900 border border-amber-300 text-xs font-black uppercase tracking-wider transition-all cursor-pointer shadow-2xs"
+                      title="Redraw fair pairings for this round"
+                    >
+                      <RotateCw className={`w-3.5 h-3.5 text-amber-700 ${isRecalculating ? 'animate-spin' : ''}`} />
+                      <span>Redraw Round</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Unassigned / Added Players Alert for this Round */}
+              {isLiveSection && unassignedActivePlayers.length > 0 && onRegenerateCurrentRound && (
+                <div
+                  id={`alert-added-players-r${round.roundNumber}`}
+                  className="bg-amber-500/10 border-b border-amber-500/20 p-3 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-800 flex items-center justify-center shrink-0">
+                      <UserPlus className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-1.5 flex-wrap">
+                        <span>{unassignedActivePlayers.length} Added Player{unassignedActivePlayers.length > 1 ? 's' : ''} Ready</span>
+                        <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-md">
+                          Not scheduled in this round yet
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-600 mt-0.5 truncate">
+                        Redraw to include everyone: {unassignedActivePlayers.map((p) => p.name).join(', ')}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => executeRegenerate(round.roundNumber)}
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-black text-xs uppercase tracking-wider transition-all shadow-xs cursor-pointer shrink-0"
+                  >
+                    <RotateCw className="w-3.5 h-3.5" />
+                    <span>Redraw Round {round.roundNumber}</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Compact Matches List */}
+              <div className="p-3 sm:p-4 space-y-2.5">
+                {round.matches.map((match) => (
+                  <CompactMatchRow
+                    key={match.id}
+                    match={match}
+                    roundNumber={round.roundNumber}
+                    playersMap={playersMap}
+                    config={config}
+                    partnerCounts={partnerCount}
+                    isSelected={selectedMatchId === match.id}
+                    onSelectMatch={(id) => setSelectedMatchId(id)}
+                    onUpdateScore={onUpdateScore}
+                    onCompleteMatch={onCompleteMatch}
+                    onReopenMatch={onReopenMatch}
+                    onStartMatch={onStartMatch}
+                    onEditLineup={() => setEditingMatchId(match.id)}
+                    onShuffleLineup={onShuffleLineup}
+                    onBenchAndReplacePlayer={onBenchAndReplacePlayer}
+                    onDeleteMatch={onDeleteMatch}
+                  />
+                ))}
+
+                {/* Resting Bench for this Round */}
+                {restingPlayers.length > 0 && (
+                  <div
+                    key={`resting-bench-r${round.roundNumber}`}
+                    className="mt-3 bg-slate-50 border border-slate-200/80 rounded-xl p-2.5 sm:p-3"
+                  >
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-5 h-5 rounded-lg bg-slate-200 text-slate-700 flex items-center justify-center text-[11px] font-black">
+                          <Coffee className="w-3 h-3 text-slate-600" />
+                        </div>
+                        <span className="text-[11px] font-black text-slate-800 uppercase tracking-wider">
+                          Resting on Bench ({restingPlayers.length})
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-bold text-slate-500">
+                        Rotational Rest
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {restingPlayers.map((player) => (
+                        <div
+                          key={`bench-r${round.roundNumber}-${player.id}`}
+                          className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white border border-slate-200 shadow-2xs text-xs font-bold text-slate-800"
+                        >
+                          <span
+                            className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-black border border-white shrink-0 ${player.avatarColor}`}
+                          >
+                            {player.name.charAt(0)}
+                          </span>
+                          <span className="truncate max-w-[120px]">{player.name}</span>
+                          <span className="text-[9px] px-1 rounded bg-slate-100 text-slate-500 font-semibold">
+                            {playerMatchCounts[player.id] || 0} GP
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
+          );
+        })}
       </div>
 
-      {/* Resting Players Bench */}
-      {restingPlayers.length > 0 && (
-        <div
-          id="resting-bench-section"
-          className="bg-slate-50 border border-slate-200/90 rounded-xl sm:rounded-2xl p-3 sm:p-4 shadow-2xs"
-        >
-          <div className="flex items-center justify-between gap-2 mb-2">
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-lg bg-slate-200 text-slate-700 flex items-center justify-center text-xs font-black">
-                <Coffee className="w-3.5 h-3.5 text-slate-600" />
-              </div>
-              <span className="text-xs font-black text-slate-800 uppercase tracking-wider">
-                Resting on Bench ({restingPlayers.length})
-              </span>
+      {/* Confirmation Modal to Redraw Round */}
+      {showConfirmRegenerate !== null && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl border border-slate-200">
+            <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mx-auto">
+              <RotateCw className="w-6 h-6" />
             </div>
-            <span className="text-[10px] font-bold text-slate-500">
-              Prioritized next round
-            </span>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            {restingPlayers.map((player) => (
-              <div
-                key={`bench-${player.id}`}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white border border-slate-200 shadow-2xs text-xs font-bold text-slate-800"
+            <div>
+              <h3 className="text-base font-black text-slate-900">
+                Redraw Round {showConfirmRegenerate}?
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                This will recalculate pairings and courts for Round {showConfirmRegenerate} to balance partner variety and games played.
+              </p>
+            </div>
+            <div className="flex items-center justify-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowConfirmRegenerate(null)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-50 cursor-pointer"
               >
-                <span
-                  className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black border border-white shrink-0 ${player.avatarColor}`}
-                >
-                  {player.name.charAt(0)}
-                </span>
-                <span className="truncate max-w-[120px]">{player.name}</span>
-                <span className="text-[9px] px-1 rounded bg-slate-100 text-slate-500 font-semibold">
-                  {playerMatchCounts[player.id] || 0} GP
-                </span>
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => executeRegenerate(showConfirmRegenerate)}
+                className="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-black text-xs uppercase tracking-wider cursor-pointer shadow-sm"
+              >
+                Yes, Redraw
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Schedule Call-To-Action Card at the end of the matches list */}
+      {onOpenBatchGenerator && (
+        <div
+          id="schedule-generate-more-cta"
+          className="rounded-2xl sm:rounded-3xl border border-indigo-200/90 bg-gradient-to-r from-indigo-50/80 via-white to-amber-50/60 p-4 sm:p-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xs"
+        >
+          <div className="flex items-center gap-3 text-center sm:text-left min-w-0">
+            <div className="w-11 h-11 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-black shrink-0 shadow-md shadow-indigo-200">
+              <PlusCircle className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <div className="text-sm sm:text-base font-black text-indigo-950 flex items-center gap-2 flex-wrap justify-center sm:justify-start">
+                <span>Generate More Matches</span>
+                {lastBatchConfig && !rosterHasChanged && (
+                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300">
+                    Ready to Continue (Rounds {nextBatchStartRound}–{nextBatchEndRound})
+                  </span>
+                )}
+                {rosterHasChanged && lastBatchConfig && (
+                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                    Roster Changed (Review)
+                  </span>
+                )}
               </div>
-            ))}
+              <p className="text-xs font-semibold text-slate-500 mt-0.5">
+                New rounds sequentially carry forward games played, partner variety, and rotational rest across the entire session.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+            {lastBatchConfig && !rosterHasChanged && onQuickGenerateMore ? (
+              <>
+                <button
+                  type="button"
+                  id="btn-quick-generate-next-batch"
+                  onClick={onQuickGenerateMore}
+                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-5 py-3 rounded-xl sm:rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs uppercase tracking-wider shadow-md hover:shadow-indigo-300 transition-all cursor-pointer active:scale-95"
+                >
+                  <RotateCw className="w-3.5 h-3.5" />
+                  <span>
+                    Quick Generate {lastBatchConfig.roundCount > 1 ? `R${nextBatchStartRound}–R${nextBatchEndRound}` : `Round ${nextBatchStartRound}`}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  id="btn-customize-next-batch"
+                  onClick={onOpenBatchGenerator}
+                  className="inline-flex items-center justify-center p-3 rounded-xl sm:rounded-2xl bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 transition-colors cursor-pointer"
+                  title="Configure next batch settings"
+                  aria-label="Configure next batch settings"
+                >
+                  <Sliders className="w-4 h-4 text-slate-600" />
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                id="btn-generate-more-matches"
+                onClick={handleGenerateMoreClick}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl sm:rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs uppercase tracking-wider shadow-md hover:shadow-indigo-300 transition-all cursor-pointer active:scale-95"
+              >
+                <Layers className="w-4 h-4 text-yellow-300" />
+                <span>
+                  {lastBatchConfig && rosterHasChanged
+                    ? 'Confirm Roster & Generate'
+                    : 'Generate More Matches'}
+                </span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -651,7 +700,7 @@ export const ActiveRoundView: React.FC<ActiveRoundViewProps> = ({
               </span>
             </div>
             <p className="text-xs text-indigo-200 mt-0.5 truncate sm:whitespace-normal">
-              Cycle {fairnessMetric.currentCycle} ({fairnessMetric.playersInCurrentCycle}/{fairnessMetric.totalActivePlayers} players) • Partner variety &amp; equal court time guaranteed
+              Cycle {fairnessMetric.currentCycle} ({fairnessMetric.playersInCurrentCycle}/{fairnessMetric.totalActivePlayers} players) • Partner variety &amp; equal court time guaranteed across whole schedule
             </p>
           </div>
         </div>
@@ -668,141 +717,47 @@ export const ActiveRoundView: React.FC<ActiveRoundViewProps> = ({
         </button>
       </div>
 
-      {/* Spacer so bottom elements are never overlapped on mobile */}
-      <div className="h-16 md:hidden pointer-events-none" />
-
-      {/* Mobile Floating Quick-Advance Bar */}
-      <div className="fixed bottom-16 sm:bottom-[4.25rem] left-0 right-0 z-30 px-3 md:hidden pointer-events-none">
-        <div className="max-w-md mx-auto bg-slate-900/95 backdrop-blur-md text-white rounded-xl sm:rounded-2xl p-2 sm:p-2.5 shadow-2xl border border-slate-700/80 flex items-center justify-between gap-2 pointer-events-auto">
-          <div className="flex items-center gap-2 min-w-0 pl-1">
-            <span className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-indigo-600 text-white font-black text-xs flex items-center justify-center shrink-0 shadow-xs">
-              R{currentRound.roundNumber}
-            </span>
-            <div className="min-w-0">
-              <div className="text-xs font-black truncate flex items-center gap-1">
-                <span>{completedMatchesCount}/{roundMatches.length} Done</span>
-                {allMatchesCompleted && <span className="text-emerald-400 font-bold">✓</span>}
-              </div>
-              <p className="text-[10px] text-slate-400 font-semibold truncate">
-                {allMatchesCompleted ? 'Round complete!' : 'In progress'}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1.5 shrink-0">
-            {onRegenerateCurrentRound && (
-              <button
-                type="button"
-                id="btn-mobile-recalculate-round"
-                onClick={handleRegenerateClick}
-                disabled={isRecalculating}
-                className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 active:scale-95 text-amber-400 border border-slate-700 transition-all cursor-pointer min-h-[38px] flex items-center justify-center"
-                title={`Recalculate Round ${currentRound.roundNumber} matches`}
-                aria-label={`Recalculate Round ${currentRound.roundNumber} matches`}
-              >
-                <RotateCw className={`w-4 h-4 text-amber-400 ${isRecalculating ? 'animate-spin' : ''}`} />
-              </button>
-            )}
-
-            <button
-              type="button"
-              id="btn-mobile-quick-next-round"
-              onClick={() => {
-                soundFx.playWhistle();
-                onGenerateNextRound();
-              }}
-              className={`inline-flex items-center gap-1 px-3 py-2 rounded-lg sm:rounded-xl font-black text-xs uppercase tracking-wider transition-all shadow-md active:scale-95 cursor-pointer min-h-[38px] sm:min-h-[42px] ${
-                allMatchesCompleted
-                  ? 'bg-yellow-400 text-indigo-950 shadow-yellow-500/30 ring-2 ring-yellow-300'
-                  : 'bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white'
-              }`}
-            >
-              <span>Next R{currentRound.roundNumber + 1}</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-      </div>
+      {/* Floating Match Window for Active / Officiated Match */}
+      {selectedMatchItem && (
+        <FloatingMatchWindow
+          match={selectedMatchItem.match}
+          roundNumber={selectedMatchItem.roundNumber}
+          allMatchesInSession={allMatchesInSession}
+          playersMap={playersMap}
+          config={config}
+          partnerCounts={partnerCount}
+          playerMatchCounts={playerMatchCounts}
+          onClose={() => setSelectedMatchId(null)}
+          onSelectMatch={(id) => setSelectedMatchId(id)}
+          onUpdateScore={onUpdateScore}
+          onCompleteMatch={onCompleteMatch}
+          onReopenMatch={onReopenMatch}
+          onStartMatch={onStartMatch}
+          onEditLineup={() => setEditingMatchId(selectedMatchItem.match.id)}
+          onShuffleLineup={onShuffleLineup}
+          onBenchAndReplacePlayer={onBenchAndReplacePlayer}
+          onDeleteMatch={onDeleteMatch}
+        />
+      )}
 
       {/* Edit Active Match Lineup Modal */}
       {editingActiveMatch && (
         <EditLineupModal
           isOpen={true}
           onClose={() => setEditingMatchId(null)}
-          title={`Edit Court ${editingActiveMatch.courtNumber} Lineup`}
-          subtitle="Substitute or swap active players on this court"
+          title={`Edit Court ${editingActiveMatch.courtNumber || 1} Lineup`}
+          subtitle={`Round ${editingActiveMatch.roundNumber}`}
           playersPerTeam={config.playersPerTeam}
           allActivePlayers={activePlayers}
           initialTeam1={editingActiveMatch.team1.playerIds}
           initialTeam2={editingActiveMatch.team2.playerIds}
-          prioritizedBenchPlayerIds={currentRound.restingPlayerIds}
-          playerMatchCounts={playerMatchCounts}
           partnerCounts={partnerCount}
+          playerMatchCounts={playerMatchCounts}
           onSave={(t1, t2) => {
             onUpdateMatchLineup(editingActiveMatch.id, t1, t2);
             setEditingMatchId(null);
           }}
         />
-      )}
-
-      {/* Confirm Recalculate / Regenerate Modal */}
-      {showConfirmRegenerate && (
-        <div
-          id="modal-confirm-regenerate"
-          className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto"
-        >
-          <div className="bg-white rounded-2xl sm:rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-200 my-auto">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-black shrink-0">
-                <AlertTriangle className="w-5 h-5 text-amber-600" />
-              </div>
-              <div className="min-w-0">
-                <h3 className="text-base sm:text-lg font-black text-slate-900 leading-snug">
-                  Redraw Round {currentRound.roundNumber} Matches?
-                </h3>
-                <p className="text-xs text-slate-500 font-semibold truncate">
-                  Recalculate court matchups &amp; player pairings
-                </p>
-              </div>
-            </div>
-
-            <p className="text-xs sm:text-sm text-slate-600 mb-5 leading-relaxed">
-              {unassignedActivePlayers.length > 0 ? (
-                <>
-                  Found <strong>{unassignedActivePlayers.length} added player{unassignedActivePlayers.length > 1 ? 's' : ''}</strong> ({unassignedActivePlayers.map((p) => p.name).join(', ')}) waiting to play. Redrawing will generate all required matches so that <strong>every active player plays a match with zero benched players</strong>.
-                </>
-              ) : hasStartedMatches ? (
-                <>
-                  Scores or completed matches have already been recorded in <strong>Round {currentRound.roundNumber}</strong>. Redrawing will <strong>reset these matches</strong> and generate completely new, fair partner and opponent pairings so that every active player plays with <strong>zero benched players</strong>.
-                </>
-              ) : (
-                <>
-                  Are you sure you want to redraw? This will re-run the rotation matchmaking algorithm and generate all possible matches for <strong>Round {currentRound.roundNumber}</strong> so that all players play with <strong>zero benched players</strong>.
-                </>
-              )}
-            </p>
-
-            <div className="flex items-center justify-end gap-2.5">
-              <button
-                type="button"
-                id="btn-cancel-regenerate"
-                onClick={() => setShowConfirmRegenerate(false)}
-                className="px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider text-slate-600 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
-              >
-                Keep Current
-              </button>
-              <button
-                type="button"
-                id="btn-confirm-regenerate"
-                onClick={executeRegenerate}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-black uppercase tracking-wider transition-colors shadow-sm cursor-pointer active:scale-95"
-              >
-                <RotateCw className="w-3.5 h-3.5" />
-                <span>Yes, Redraw Round</span>
-              </button>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );

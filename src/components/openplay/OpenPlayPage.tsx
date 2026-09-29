@@ -45,6 +45,11 @@ import {
   setOrganizerToken,
   applyOpenPlayData,
   emitOpenPlayCloudSynced,
+  saveSessionBackupSnapshot,
+  recordRecentSession,
+  getCurrentOpenPlayData,
+  getOfflineSession,
+  saveSessionOfflineCache,
   OpenPlaySessionData,
   SESSION_LOADED_EVENT,
   SessionData,
@@ -57,6 +62,7 @@ interface OpenPlayPageProps {
   socialPlayers?: Player[];
   setSocialPlayers?: React.Dispatch<React.SetStateAction<Player[]>>;
   sessionId?: string;
+  setSessionId?: React.Dispatch<React.SetStateAction<string>>;
   onOpenTransfer?: () => void;
   isSyncing?: boolean;
   onPullFromSocial?: () => void;
@@ -67,6 +73,7 @@ export const OpenPlayPage: React.FC<OpenPlayPageProps> = ({
   socialPlayers: externalSocialPlayers,
   setSocialPlayers: externalSetSocialPlayers,
   sessionId: externalSessionId,
+  setSessionId: externalSetSessionId,
   onOpenTransfer: externalOnOpenTransfer,
   isSyncing: externalIsSyncing,
   onPullFromSocial,
@@ -89,6 +96,7 @@ export const OpenPlayPage: React.FC<OpenPlayPageProps> = ({
   });
 
   const activeSessionId = externalSessionId || internalSessionId;
+  const setSessionId = externalSetSessionId || setInternalSessionId;
 
   const [internalIsSyncing, setInternalIsSyncing] = useState(false);
   const isSyncing = externalIsSyncing ?? internalIsSyncing;
@@ -102,9 +110,16 @@ export const OpenPlayPage: React.FC<OpenPlayPageProps> = ({
   });
   const [showTransferModal, setShowTransferModal] = useState(false);
 
-  // Configuration
+  // Active Session ID for per-session offline isolation
+  const effectiveSessionId = activeSessionId;
+
+  // Configuration (prioritizing active session offline cache)
   const [config, setConfig] = useState<OpenPlayConfig>(() => {
     try {
+      if (effectiveSessionId) {
+        const cached = getOfflineSession(effectiveSessionId);
+        if (cached?.openPlay?.config) return cached.openPlay.config;
+      }
       const saved = localStorage.getItem(OPENPLAY_STORAGE_KEYS.CONFIG);
       return saved ? JSON.parse(saved) : DEFAULT_OPENPLAY_CONFIG;
     } catch {
@@ -114,6 +129,15 @@ export const OpenPlayPage: React.FC<OpenPlayPageProps> = ({
 
   // Social Players Roster
   const [internalSocialPlayers, setInternalSocialPlayers] = useState<Player[]>(() => {
+    if (effectiveSessionId) {
+      const cached = getOfflineSession(effectiveSessionId);
+      if (cached?.openPlay?.players && Array.isArray(cached.openPlay.players)) {
+        return cached.openPlay.players;
+      }
+      if (cached?.players && Array.isArray(cached.players)) {
+        return cached.players;
+      }
+    }
     return getStoredSocialPlayers();
   });
 
@@ -123,12 +147,29 @@ export const OpenPlayPage: React.FC<OpenPlayPageProps> = ({
   // Active Court Matches (courtNumber -> OpenPlayMatch)
   const [activeMatches, setActiveMatches] = useState<Record<number, OpenPlayMatch>>(() => {
     try {
+      if (effectiveSessionId) {
+        const cached = getOfflineSession(effectiveSessionId);
+        if (cached) {
+          if (cached.openPlay?.activeMatches) {
+            const parsed = cached.openPlay.activeMatches;
+            const cleaned: Record<number, OpenPlayMatch> = {};
+            Object.entries(parsed).forEach(([k, match]: [string, any]) => {
+              if (match && ![...match.team1, ...match.team2].some((id: string) => id.startsWith('op-'))) {
+                cleaned[Number(k)] = match;
+              }
+            });
+            return cleaned;
+          }
+          return {};
+        }
+        return {};
+      }
       const saved = localStorage.getItem(OPENPLAY_STORAGE_KEYS.ACTIVE_MATCHES);
       if (saved) {
         const parsed: Record<number, OpenPlayMatch> = JSON.parse(saved);
         const cleaned: Record<number, OpenPlayMatch> = {};
-        Object.entries(parsed).forEach(([k, match]) => {
-          if (match && ![...match.team1, ...match.team2].some((id) => id.startsWith('op-'))) {
+        Object.entries(parsed).forEach(([k, match]: [string, any]) => {
+          if (match && ![...match.team1, ...match.team2].some((id: string) => id.startsWith('op-'))) {
             cleaned[Number(k)] = match;
           }
         });
@@ -141,11 +182,23 @@ export const OpenPlayPage: React.FC<OpenPlayPageProps> = ({
   // Match History
   const [history, setHistory] = useState<OpenPlayMatch[]>(() => {
     try {
+      if (effectiveSessionId) {
+        const cached = getOfflineSession(effectiveSessionId);
+        if (cached) {
+          if (cached.openPlay?.history && Array.isArray(cached.openPlay.history)) {
+            return cached.openPlay.history.filter(
+              (match: any) => ![...match.team1, ...match.team2].some((id: string) => id.startsWith('op-'))
+            );
+          }
+          return [];
+        }
+        return [];
+      }
       const saved = localStorage.getItem(OPENPLAY_STORAGE_KEYS.HISTORY);
       if (saved) {
         const parsed: OpenPlayMatch[] = JSON.parse(saved);
         return parsed.filter(
-          (match) => ![...match.team1, ...match.team2].some((id) => id.startsWith('op-'))
+          (match: any) => ![...match.team1, ...match.team2].some((id: string) => id.startsWith('op-'))
         );
       }
     } catch {}
@@ -160,6 +213,13 @@ export const OpenPlayPage: React.FC<OpenPlayPageProps> = ({
   // ----------------------------------------------------
   const [winnersQueue, setWinnersQueue] = useState<string[]>(() => {
     try {
+      if (effectiveSessionId) {
+        const cached = getOfflineSession(effectiveSessionId);
+        if (cached) {
+          return cached.openPlay?.winnersQueue || [];
+        }
+        return [];
+      }
       const saved = localStorage.getItem('openplay_winners_queue_v2');
       if (saved) return JSON.parse(saved);
     } catch {}
@@ -168,6 +228,28 @@ export const OpenPlayPage: React.FC<OpenPlayPageProps> = ({
 
   const [restingBench, setRestingBench] = useState<string[]>(() => {
     try {
+      if (effectiveSessionId) {
+        const cached = getOfflineSession(effectiveSessionId);
+        if (cached) {
+          if (cached.openPlay?.restingBench && Array.isArray(cached.openPlay.restingBench)) {
+            return cached.openPlay.restingBench;
+          }
+          const playingIds = new Set<string>();
+          Object.values(activeMatches).forEach((m) => {
+            if (m && m.status === 'in_progress') {
+              [...m.team1, ...m.team2].forEach((id) => playingIds.add(id));
+            }
+          });
+          return (socialPlayers || []).filter((p) => !playingIds.has(p.id)).map((p) => p.id);
+        }
+        const playingIds = new Set<string>();
+        Object.values(activeMatches).forEach((m) => {
+          if (m && m.status === 'in_progress') {
+            [...m.team1, ...m.team2].forEach((id) => playingIds.add(id));
+          }
+        });
+        return (socialPlayers || []).filter((p) => !playingIds.has(p.id)).map((p) => p.id);
+      }
       const saved = localStorage.getItem('openplay_resting_bench_v2');
       if (saved) return JSON.parse(saved);
     } catch {}
@@ -183,6 +265,13 @@ export const OpenPlayPage: React.FC<OpenPlayPageProps> = ({
 
   const [losersQueue, setLosersQueue] = useState<string[]>(() => {
     try {
+      if (effectiveSessionId) {
+        const cached = getOfflineSession(effectiveSessionId);
+        if (cached) {
+          return cached.openPlay?.losersQueue || [];
+        }
+        return [];
+      }
       const saved = localStorage.getItem('openplay_losers_queue_v2');
       if (saved) return JSON.parse(saved);
     } catch {}
@@ -191,6 +280,12 @@ export const OpenPlayPage: React.FC<OpenPlayPageProps> = ({
 
   const [nextQueueTurn, setNextQueueTurn] = useState<'winners' | 'losers'>(() => {
     try {
+      if (effectiveSessionId) {
+        const cached = getOfflineSession(effectiveSessionId);
+        if (cached?.openPlay?.nextQueueTurn) {
+          return cached.openPlay.nextQueueTurn;
+        }
+      }
       const saved = localStorage.getItem(OPENPLAY_STORAGE_KEYS.NEXT_QUEUE_TURN);
       if (saved === 'winners' || saved === 'losers') return saved;
     } catch {}
@@ -580,10 +675,67 @@ export const OpenPlayPage: React.FC<OpenPlayPageProps> = ({
 
   // Generate a brand new readable session ID
   const handleGenerateNewSession = () => {
+    // Preserve current session state in backup snapshot
+    saveSessionBackupSnapshot({
+      id: activeSessionId,
+      openPlay: {
+        config,
+        activeMatches,
+        history,
+        winnersQueue,
+        losersQueue,
+        restingBench,
+        nextQueueTurn,
+        players: socialPlayers,
+      },
+      players: socialPlayers,
+      updatedAt: Date.now(),
+    });
+
     const newId = generateSessionId();
     const token = generateOrganizerToken();
     setOrganizerToken(newId, token);
+
+    // Clean Open Play state
+    const allIds = (socialPlayers || []).map((p) => p.id);
+    const cleanOpData: OpenPlaySessionData = {
+      config,
+      activeMatches: {},
+      history: [],
+      winnersQueue: [],
+      losersQueue: [],
+      restingBench: allIds,
+      nextQueueTurn: 'winners',
+      players: socialPlayers,
+      updatedAt: Date.now(),
+    };
+
+    setActiveMatches({});
+    setHistory([]);
+    setWinnersQueue([]);
+    setLosersQueue([]);
+    setRestingBench(allIds);
+    setNextQueueTurn('winners');
+
+    // Synchronously write clean new session to offline cache IMMEDIATELY so turning off data will never resurrect old courts
+    saveSessionOfflineCache(newId, {
+      id: newId,
+      players: socialPlayers,
+      openPlay: cleanOpData,
+      organizerToken: token,
+      updatedAt: Date.now(),
+    });
+
+    setSessionId(newId);
     setInternalSessionId(newId);
+
+    recordRecentSession(newId, {
+      name: config.sessionName || 'Open Play Session',
+      sport: config.sport,
+      playersCount: socialPlayers.length,
+      roundsCount: 0,
+    });
+
     try {
       localStorage.setItem('fairclub_session_id_v1', newId);
       const url = new URL(window.location.href);
@@ -593,7 +745,11 @@ export const OpenPlayPage: React.FC<OpenPlayPageProps> = ({
       url.searchParams.delete('key');
       window.history.replaceState({}, '', url.toString());
     } catch {}
-    handleManualSync();
+
+    saveSessionToCloud(newId, {
+      players: socialPlayers,
+      openPlay: cleanOpData,
+    }).catch(() => {});
   };
 
   // Navigation tabs
@@ -650,7 +806,7 @@ export const OpenPlayPage: React.FC<OpenPlayPageProps> = ({
         statsMap[id].gamesPlayed += 1;
       });
 
-      winnerIds.forEach((id) => {
+      winnerIds.forEach((id: string) => {
         if (!statsMap[id]) statsMap[id] = { gamesPlayed: 1, wins: 0, losses: 0, currentStreak: 0, bestStreak: 0 };
         statsMap[id].wins += 1;
         statsMap[id].currentStreak += 1;
@@ -659,7 +815,7 @@ export const OpenPlayPage: React.FC<OpenPlayPageProps> = ({
         }
       });
 
-      loserIds.forEach((id) => {
+      loserIds.forEach((id: string) => {
         if (!statsMap[id]) statsMap[id] = { gamesPlayed: 1, wins: 0, losses: 0, currentStreak: 0, bestStreak: 0 };
         if (!isDraw) statsMap[id].losses += 1;
         statsMap[id].currentStreak = 0;
@@ -770,8 +926,8 @@ export const OpenPlayPage: React.FC<OpenPlayPageProps> = ({
 
     soundFx.playWhistle();
 
-    const team1Names = match.team1.map((id) => playerRegistry[id]?.name || 'Player').join(' & ');
-    const team2Names = match.team2.map((id) => playerRegistry[id]?.name || 'Player').join(' & ');
+    const team1Names = match.team1.map((id: string) => playerRegistry[id]?.name || 'Player').join(' & ');
+    const team2Names = match.team2.map((id: string) => playerRegistry[id]?.name || 'Player').join(' & ');
 
     let matchTypeDesc = 'Match Started';
     if (match.matchType === 'bench_start') matchTypeDesc = '🪑 Bench Round Game';
@@ -855,8 +1011,8 @@ export const OpenPlayPage: React.FC<OpenPlayPageProps> = ({
       [courtNumber]: shuffled,
     }));
 
-    const team1Names = shuffled.team1.map((id) => playerRegistry[id]?.name || 'Player').join(' & ');
-    const team2Names = shuffled.team2.map((id) => playerRegistry[id]?.name || 'Player').join(' & ');
+    const team1Names = shuffled.team1.map((id: string) => playerRegistry[id]?.name || 'Player').join(' & ');
+    const team2Names = shuffled.team2.map((id: string) => playerRegistry[id]?.name || 'Player').join(' & ');
 
     setNotification({
       id: Date.now().toString(),
@@ -1247,10 +1403,10 @@ export const OpenPlayPage: React.FC<OpenPlayPageProps> = ({
           }
 
           const newTeam1 = inTeam1
-            ? match.team1.map((pId) => (pId === id ? availableCandidateId : pId))
+            ? match.team1.map((pId: string) => (pId === id ? availableCandidateId : pId))
             : match.team1;
           const newTeam2 = inTeam2
-            ? match.team2.map((pId) => (pId === id ? availableCandidateId : pId))
+            ? match.team2.map((pId: string) => (pId === id ? availableCandidateId : pId))
             : match.team2;
 
           updatedMatches[courtNum] = {
@@ -1260,8 +1416,8 @@ export const OpenPlayPage: React.FC<OpenPlayPageProps> = ({
           };
         } else {
           // No substitute available: remove player from the team
-          const newTeam1 = match.team1.filter((pId) => pId !== id);
-          const newTeam2 = match.team2.filter((pId) => pId !== id);
+          const newTeam1 = match.team1.filter((pId: string) => pId !== id);
+          const newTeam2 = match.team2.filter((pId: string) => pId !== id);
 
           if (newTeam1.length === 0 || newTeam2.length === 0) {
             delete updatedMatches[courtNum];
@@ -1301,8 +1457,8 @@ export const OpenPlayPage: React.FC<OpenPlayPageProps> = ({
     // 5. Cleanly sync deletion with Social mode storage if present
     try {
       const storedSocial = getStoredSocialPlayers();
-      if (storedSocial.some((p) => p.id === id)) {
-        const cleanedSocial = storedSocial.filter((p) => p.id !== id);
+      if (storedSocial.some((p: any) => p.id === id)) {
+        const cleanedSocial = storedSocial.filter((p: any) => p.id !== id);
         setStoredSocialPlayers(cleanedSocial);
       }
     } catch {}
@@ -1382,6 +1538,23 @@ export const OpenPlayPage: React.FC<OpenPlayPageProps> = ({
 
   // Resets
   const handleResetKeepPlayers = () => {
+    // Safety backup snapshot before reset
+    saveSessionBackupSnapshot({
+      id: activeSessionId,
+      openPlay: {
+        config,
+        activeMatches,
+        history,
+        winnersQueue,
+        losersQueue,
+        restingBench,
+        nextQueueTurn,
+        players: socialPlayers,
+      },
+      players: socialPlayers,
+      updatedAt: Date.now(),
+    });
+
     setActiveMatches({});
     setHistory([]);
     setWinnersQueue([]);
@@ -1391,6 +1564,30 @@ export const OpenPlayPage: React.FC<OpenPlayPageProps> = ({
     setRestingBench(allIds);
     setNextQueueTurn('winners');
     localStorage.setItem(OPENPLAY_STORAGE_KEYS.NEXT_QUEUE_TURN, 'winners');
+
+    const cleanOpData: OpenPlaySessionData = {
+      config,
+      activeMatches: {},
+      history: [],
+      winnersQueue: [],
+      losersQueue: [],
+      restingBench: allIds,
+      nextQueueTurn: 'winners',
+      players: socialPlayers,
+      updatedAt: Date.now(),
+    };
+
+    // SYNCHRONOUSLY update offline cache for current session ID so turning off data will never resurrect old matches
+    saveSessionOfflineCache(activeSessionId, {
+      openPlay: cleanOpData,
+      players: socialPlayers,
+      updatedAt: Date.now(),
+    });
+
+    saveSessionToCloud(activeSessionId, {
+      openPlay: cleanOpData,
+      players: socialPlayers,
+    }).catch(() => {});
 
     soundFx.playVictoryFanfare();
     setNotification({
@@ -1403,6 +1600,23 @@ export const OpenPlayPage: React.FC<OpenPlayPageProps> = ({
   };
 
   const handleResetFull = () => {
+    // Safety backup snapshot before full reset
+    saveSessionBackupSnapshot({
+      id: activeSessionId,
+      openPlay: {
+        config,
+        activeMatches,
+        history,
+        winnersQueue,
+        losersQueue,
+        restingBench,
+        nextQueueTurn,
+        players: socialPlayers,
+      },
+      players: socialPlayers,
+      updatedAt: Date.now(),
+    });
+
     setActiveMatches({});
     setHistory([]);
     setWinnersQueue([]);
@@ -1419,6 +1633,30 @@ export const OpenPlayPage: React.FC<OpenPlayPageProps> = ({
       localStorage.removeItem(OPENPLAY_STORAGE_KEYS.HISTORY);
       localStorage.removeItem(OPENPLAY_STORAGE_KEYS.NEXT_QUEUE_TURN);
     } catch {}
+
+    const cleanOpData: OpenPlaySessionData = {
+      config,
+      activeMatches: {},
+      history: [],
+      winnersQueue: [],
+      losersQueue: [],
+      restingBench: [],
+      nextQueueTurn: 'winners',
+      players: [],
+      updatedAt: Date.now(),
+    };
+
+    // SYNCHRONOUSLY update offline cache for current session ID
+    saveSessionOfflineCache(activeSessionId, {
+      players: [],
+      openPlay: cleanOpData,
+      updatedAt: Date.now(),
+    });
+
+    saveSessionToCloud(activeSessionId, {
+      players: [],
+      openPlay: cleanOpData,
+    }).catch(() => {});
 
     emitRosterSync('openplay', []);
     soundFx.playPointChime();
@@ -1812,4 +2050,4 @@ export const OpenPlayPage: React.FC<OpenPlayPageProps> = ({
       />
     </div>
   );
-};
+}

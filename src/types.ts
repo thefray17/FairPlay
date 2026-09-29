@@ -143,3 +143,14 @@ export interface TeamVsTeamRecord {
   winRateTeam2: number;
   matches: TeamMatchInstance[];
 }
+
+export type BatchGenerationMode = 'social' | 'openplay' | 'tournament' | 'shuffle';
+
+export interface BatchGenerationConfig {
+  mode: BatchGenerationMode | string;
+  courtsCount: number;
+  targetPoints: number;
+  winByTwo: boolean;
+  activePlayerIds: string[];
+  roundCount: number;
+}

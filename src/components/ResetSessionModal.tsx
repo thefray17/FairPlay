@@ -217,6 +217,14 @@ export const ResetSessionModal: React.FC<ResetSessionModalProps> = ({
               </button>
             </div>
           </div>
+
+          {/* Safety Snapshot Reassurance */}
+          <div className="p-3 rounded-xl bg-slate-100 border border-slate-200 text-[11px] text-slate-600 flex items-start gap-2">
+            <RotateCcw className="w-3.5 h-3.5 text-indigo-600 shrink-0 mt-0.5" />
+            <span>
+              <strong>Safety backup:</strong> Your session history and rosters are preserved in an automatic snapshot and stored safely in the cloud. If you ever need to recover an overwritten session, open <strong>Transfer &amp; Sync</strong> → <strong>Paste &amp; Load Session</strong> to restore your snapshot or previous session PIN.
+            </span>
+          </div>
         </div>
 
         {/* Pinned Footer Cancel */}

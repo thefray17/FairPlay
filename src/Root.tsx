@@ -1,4 +1,7 @@
-import React, { useState, useEffect, Suspense, lazy } from 'react';
+import React, { useState, useEffect } from 'react';
+import App from './App';
+import { OpenPlayPage } from './components/openplay/OpenPlayPage';
+import { NotFoundPage } from './components/common/NotFoundPage';
 import { Player } from './types';
 import { INITIAL_PLAYERS } from './utils/sampleData';
 import { SOCIAL_STORAGE_KEYS, emitRosterSync } from './utils/playerSync';
@@ -9,73 +12,21 @@ import {
   generateSessionId,
   generateOrganizerToken,
   setOrganizerToken,
+  saveSessionOfflineCache,
+  getOfflineSession,
   loadAndApplySession,
   SESSION_LOADED_EVENT,
-  SessionData,
 } from './utils/sessionSync';
 
-const App = lazy(() => import('./App'));
-const OpenPlayPage = lazy(() =>
-  import('./components/openplay/OpenPlayPage').then((m) => ({ default: m.OpenPlayPage }))
-);
-
 export function Root() {
-  const [currentPath, setCurrentPath] = useState<string>(() => {
+  const [currentPath, setCurrentPath] = useState(() => {
     if (typeof window !== 'undefined') {
       return window.location.pathname;
     }
     return '/';
   });
 
-  // Social Tournament players state
-  const [socialPlayers, setSocialPlayers] = useState<Player[]>(() => {
-    try {
-      const saved = localStorage.getItem(SOCIAL_STORAGE_KEYS.PLAYERS);
-      const parsed: Player[] = saved ? JSON.parse(saved) : INITIAL_PLAYERS;
-      const seen = new Set<string>();
-      return parsed.filter((p) => {
-        if (!p || !p.id || seen.has(p.id)) return false;
-        if (p.id.startsWith('op-')) return false;
-        seen.add(p.id);
-        return true;
-      });
-    } catch {
-      return INITIAL_PLAYERS;
-    }
-  });
-
-  // Open Play players state
-  const [openPlayPlayers, setOpenPlayPlayers] = useState<Player[]>(() => {
-    try {
-      const saved = localStorage.getItem(OPENPLAY_STORAGE_KEYS.PLAYERS);
-      if (saved) {
-        const parsed: Player[] = JSON.parse(saved);
-        const seen = new Set<string>();
-        return parsed.filter((p) => {
-          if (!p || !p.id || seen.has(p.id)) return false;
-          if (p.id.startsWith('op-')) return false;
-          seen.add(p.id);
-          return true;
-        });
-      }
-      
-      // Fallback: copy social players if no Open Play players exist yet
-      const socialSaved = localStorage.getItem(SOCIAL_STORAGE_KEYS.PLAYERS);
-      const parsedSocial: Player[] = socialSaved ? JSON.parse(socialSaved) : INITIAL_PLAYERS;
-      const seen = new Set<string>();
-      return parsedSocial.filter((p) => {
-        if (!p || !p.id || seen.has(p.id)) return false;
-        if (p.id.startsWith('op-')) return false;
-        seen.add(p.id);
-        return true;
-      });
-    } catch {
-      return INITIAL_PLAYERS;
-    }
-  });
-
-  // Unified Session ID for both Social Tournament and Open Play (User-friendly 4-digit PIN)
-  const [sessionId, setSessionId] = useState<string>(() => {
+  const [sessionId, setSessionId] = useState(() => {
     try {
       if (typeof window !== 'undefined') {
         const extracted = extractSessionId(window.location.href);
@@ -90,10 +41,88 @@ export function Root() {
     const newId = generateSessionId();
     const token = generateOrganizerToken();
     setOrganizerToken(newId, token);
+    saveSessionOfflineCache(newId, {
+      id: newId,
+      players: INITIAL_PLAYERS,
+      rounds: [],
+      organizerToken: token,
+      updatedAt: Date.now(),
+    });
     return newId;
   });
 
-  // Auto-fetch if opened with a session link or QR code from another device
+  const [socialPlayers, setSocialPlayers] = useState<Player[]>(() => {
+    try {
+      const cached = getOfflineSession(sessionId);
+      if (cached && Array.isArray(cached.players)) {
+        const seen2 = new Set();
+        return cached.players.filter((p) => {
+          if (!p || !p.id || seen2.has(p.id)) return false;
+          if (p.id.startsWith('op-')) return false;
+          seen2.add(p.id);
+          return true;
+        });
+      }
+      const saved = localStorage.getItem(SOCIAL_STORAGE_KEYS.PLAYERS);
+      const parsed = saved ? JSON.parse(saved) : INITIAL_PLAYERS;
+      const seen = new Set();
+      return parsed.filter((p: Player) => {
+        if (!p || !p.id || seen.has(p.id)) return false;
+        if (p.id.startsWith('op-')) return false;
+        seen.add(p.id);
+        return true;
+      });
+    } catch {
+      return INITIAL_PLAYERS;
+    }
+  });
+
+  const [openPlayPlayers, setOpenPlayPlayers] = useState<Player[]>(() => {
+    try {
+      const cached = getOfflineSession(sessionId);
+      if (cached?.openPlay?.players && Array.isArray(cached.openPlay.players)) {
+        const seen2 = new Set();
+        return cached.openPlay.players.filter((p) => {
+          if (!p || !p.id || seen2.has(p.id)) return false;
+          if (p.id.startsWith('op-')) return false;
+          seen2.add(p.id);
+          return true;
+        });
+      }
+      if (cached?.players && Array.isArray(cached.players)) {
+        const seen2 = new Set();
+        return cached.players.filter((p) => {
+          if (!p || !p.id || seen2.has(p.id)) return false;
+          if (p.id.startsWith('op-')) return false;
+          seen2.add(p.id);
+          return true;
+        });
+      }
+      const saved = localStorage.getItem(OPENPLAY_STORAGE_KEYS.PLAYERS);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const seen2 = new Set();
+        return parsed.filter((p: Player) => {
+          if (!p || !p.id || seen2.has(p.id)) return false;
+          if (p.id.startsWith('op-')) return false;
+          seen2.add(p.id);
+          return true;
+        });
+      }
+      const socialSaved = localStorage.getItem(SOCIAL_STORAGE_KEYS.PLAYERS);
+      const parsedSocial = socialSaved ? JSON.parse(socialSaved) : INITIAL_PLAYERS;
+      const seen = new Set();
+      return parsedSocial.filter((p: Player) => {
+        if (!p || !p.id || seen.has(p.id)) return false;
+        if (p.id.startsWith('op-')) return false;
+        seen.add(p.id);
+        return true;
+      });
+    } catch {
+      return INITIAL_PLAYERS;
+    }
+  });
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const targetSession = extractSessionId(window.location.href);
@@ -115,10 +144,9 @@ export function Root() {
     }
   }, []);
 
-  // Listen for global session loaded events from any modal or component
   useEffect(() => {
     const handleSessionLoaded = (e: Event) => {
-      const ce = e as CustomEvent<{ session: SessionData }>;
+      const ce = e as CustomEvent<{ session: any }>;
       const s = ce.detail?.session;
       if (s) {
         if (s.id) setSessionId(s.id);
@@ -132,7 +160,6 @@ export function Root() {
         }
       }
     };
-
     window.addEventListener(SESSION_LOADED_EVENT, handleSessionLoaded);
     return () => window.removeEventListener(SESSION_LOADED_EVENT, handleSessionLoaded);
   }, []);
@@ -143,7 +170,6 @@ export function Root() {
     } catch {}
   }, [sessionId]);
 
-  // Persist players to localStorage whenever updated
   useEffect(() => {
     try {
       localStorage.setItem(SOCIAL_STORAGE_KEYS.PLAYERS, JSON.stringify(socialPlayers));
@@ -160,23 +186,21 @@ export function Root() {
     }
   }, [openPlayPlayers]);
 
-  // Sync when another component or tab updates the roster
   useEffect(() => {
     const handleStorage = (e: StorageEvent) => {
       if (e.key === SOCIAL_STORAGE_KEYS.PLAYERS && e.newValue) {
         try {
-          const parsed: Player[] = JSON.parse(e.newValue);
-          setSocialPlayers(parsed.filter((p) => p && !p.id.startsWith('op-')));
+          const parsed = JSON.parse(e.newValue);
+          setSocialPlayers(parsed.filter((p: Player) => p && !p.id.startsWith('op-')));
         } catch {}
       }
       if (e.key === OPENPLAY_STORAGE_KEYS.PLAYERS && e.newValue) {
         try {
-          const parsed: Player[] = JSON.parse(e.newValue);
-          setOpenPlayPlayers(parsed.filter((p) => p && !p.id.startsWith('op-')));
+          const parsed = JSON.parse(e.newValue);
+          setOpenPlayPlayers(parsed.filter((p: Player) => p && !p.id.startsWith('op-')));
         } catch {}
       }
     };
-
     const handleRosterSync = (e: Event) => {
       const ce = e as CustomEvent<{ source: string; updatedPlayers?: Player[] }>;
       try {
@@ -186,8 +210,8 @@ export function Root() {
           } else {
             const savedSocial = localStorage.getItem(SOCIAL_STORAGE_KEYS.PLAYERS);
             if (savedSocial) {
-              const parsed: Player[] = JSON.parse(savedSocial);
-              setSocialPlayers(parsed.filter((p) => p && !p.id.startsWith('op-')));
+              const parsed = JSON.parse(savedSocial);
+              setSocialPlayers(parsed.filter((p: Player) => p && !p.id.startsWith('op-')));
             }
           }
         }
@@ -197,14 +221,13 @@ export function Root() {
           } else {
             const savedOpenPlay = localStorage.getItem(OPENPLAY_STORAGE_KEYS.PLAYERS);
             if (savedOpenPlay) {
-              const parsed: Player[] = JSON.parse(savedOpenPlay);
-              setOpenPlayPlayers(parsed.filter((p) => p && !p.id.startsWith('op-')));
+              const parsed = JSON.parse(savedOpenPlay);
+              setOpenPlayPlayers(parsed.filter((p: Player) => p && !p.id.startsWith('op-')));
             }
           }
         }
       } catch {}
     };
-
     window.addEventListener('storage', handleStorage);
     window.addEventListener('fairplay:sync-roster', handleRosterSync);
     return () => {
@@ -230,7 +253,6 @@ export function Root() {
   };
 
   const handleOverwriteOpenPlayWithSocial = () => {
-    // Make a deep copy to ensure reference change
     const newOpenPlayRoster = JSON.parse(JSON.stringify(socialPlayers));
     setOpenPlayPlayers(newOpenPlayRoster);
     try {
@@ -248,35 +270,46 @@ export function Root() {
     emitRosterSync('social', newSocialRoster);
   };
 
-  const isOpenPlay = currentPath.toLowerCase().startsWith('/openplay');
+  const handleNavigateSession = (newSessionId: string) => {
+    const clean = sanitizeSessionCode(newSessionId);
+    if (!clean) return;
+    setSessionId(clean);
+    navigateTo(`/?session=${encodeURIComponent(clean)}`);
+    loadAndApplySession(clean).catch(() => {});
+  };
 
-  return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-center text-white">
-          <div className="w-10 h-10 border-3 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4" />
-          <p className="text-slate-400 font-medium text-sm">Loading court view...</p>
-        </div>
-      }
-    >
-      {isOpenPlay ? (
-        <OpenPlayPage
-          onNavigateToSocial={() => navigateTo('/')}
-          socialPlayers={openPlayPlayers}
-          setSocialPlayers={setOpenPlayPlayers}
-          onPullFromSocial={handleOverwriteOpenPlayWithSocial}
-          sessionId={sessionId}
-        />
-      ) : (
-        <App
-          onNavigateToOpenPlay={() => navigateTo('/openplay')}
-          players={socialPlayers}
-          setPlayers={setSocialPlayers}
-          onPullFromOpenPlay={handleOverwriteSocialWithOpenPlay}
-          sessionId={sessionId}
-          setSessionId={setSessionId}
-        />
-      )}
-    </Suspense>
+  const normalizedPath = currentPath.toLowerCase().split('?')[0].split('#')[0].replace(/\/+$/, '') || '/';
+  const isOpenPlay = normalizedPath === '/openplay' || normalizedPath.startsWith('/openplay/') || normalizedPath === '/queue';
+  const isSocial = normalizedPath === '/' || normalizedPath === '/index.html' || normalizedPath === '/social' || normalizedPath === '/tournament' || normalizedPath === '/matches' || normalizedPath === '/schedule' || normalizedPath.startsWith('/s/') || normalizedPath.startsWith('/session/') || normalizedPath.startsWith('/join/');
+
+  if (!isOpenPlay && !isSocial) {
+    return (
+      <NotFoundPage
+        currentPath={currentPath}
+        onNavigateHome={() => navigateTo('/')}
+        onNavigateOpenPlay={() => navigateTo('/openplay')}
+        onNavigateSession={handleNavigateSession}
+      />
+    );
+  }
+
+  return isOpenPlay ? (
+    <OpenPlayPage
+      onNavigateToSocial={() => navigateTo('/')}
+      socialPlayers={openPlayPlayers}
+      setSocialPlayers={setOpenPlayPlayers}
+      onPullFromSocial={handleOverwriteOpenPlayWithSocial}
+      sessionId={sessionId}
+      setSessionId={setSessionId}
+    />
+  ) : (
+    <App
+      onNavigateToOpenPlay={() => navigateTo('/openplay')}
+      players={socialPlayers}
+      setPlayers={setSocialPlayers}
+      onPullFromOpenPlay={handleOverwriteSocialWithOpenPlay}
+      sessionId={sessionId}
+      setSessionId={setSessionId}
+    />
   );
 }

@@ -1,14 +1,10 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Player, Round, SessionConfig, UpcomingMatch } from './types';
+import { Player, Round, SessionConfig, UpcomingMatch, BatchGenerationConfig } from './types';
 import { DEFAULT_CONFIG, INITIAL_PLAYERS, AVATAR_COLORS } from './utils/sampleData';
 import {
   calculateFairnessMetric,
   generateNextFairRound,
+  generateBatchFairRounds,
   predictNextTwoMatches,
   getPlayerMatchCounts,
   autoReplacePlayerInRound,
@@ -31,6 +27,7 @@ import { SessionConfigModal } from './components/SessionConfigModal';
 import { ResetSessionModal } from './components/ResetSessionModal';
 import { OnboardingModal } from './components/OnboardingModal';
 import { TransferSessionModal } from './components/TransferSessionModal';
+import { BatchMatchGeneratorModal } from './components/BatchMatchGeneratorModal';
 import {
   generateSessionId,
   generateOrganizerToken,
@@ -42,12 +39,17 @@ import {
   extractSessionId,
   getCurrentOpenPlayData,
   applyOpenPlayData,
+  saveSessionBackupSnapshot,
+  recordRecentSession,
+  getOfflineSession,
+  saveSessionOfflineCache,
   SESSION_LOADED_EVENT,
   SessionData,
+  OpenPlaySessionData,
 } from './utils/sessionSync';
 import { soundFx } from './utils/audio';
 import confetti from 'canvas-confetti';
-import { ArrowRightLeft, X, Link2, Unlink, Smartphone, BatteryCharging, AlertCircle } from 'lucide-react';
+import { ArrowRightLeft, X, Link2, Unlink, Smartphone, BatteryCharging, AlertCircle, AlertTriangle, Layers } from 'lucide-react';
 import {
   ROSTER_SYNC_EVENT,
   emitRosterSync,
@@ -71,6 +73,7 @@ const STORAGE_KEYS = {
   UPCOMING: 'fairclub_upcoming_v1',
   ONBOARDED: 'fairclub_onboarded_v1',
   SESSION_ID: 'fairclub_session_id_v1',
+  LAST_BATCH_CONFIG: 'fairplay_last_batch_config_v1',
 };
 
 export default function App({
@@ -88,9 +91,15 @@ export default function App({
   sessionId?: string;
   setSessionId?: React.Dispatch<React.SetStateAction<string>>;
 } = {}) {
-  // Load initial state from LocalStorage or defaults
+  // Load initial state from LocalStorage or defaults (prioritizing active session offline cache)
+  const activeSessionId = externalSessionId || (typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.SESSION_ID) : null);
+
   const [config, setConfig] = useState<SessionConfig>(() => {
     try {
+      if (activeSessionId) {
+        const cached = getOfflineSession(activeSessionId);
+        if (cached?.config) return cached.config;
+      }
       const saved = localStorage.getItem(STORAGE_KEYS.CONFIG);
       return saved ? JSON.parse(saved) : DEFAULT_CONFIG;
     } catch {
@@ -100,6 +109,18 @@ export default function App({
 
   const [internalPlayers, setInternalPlayers] = useState<Player[]>(() => {
     try {
+      if (activeSessionId) {
+        const cached = getOfflineSession(activeSessionId);
+        if (cached && Array.isArray(cached.players)) {
+          const seen = new Set<string>();
+          return cached.players.filter((p) => {
+            if (!p || !p.id || seen.has(p.id)) return false;
+            if (p.id.startsWith('op-')) return false;
+            seen.add(p.id);
+            return true;
+          });
+        }
+      }
       const saved = localStorage.getItem(STORAGE_KEYS.PLAYERS);
       const parsed: Player[] = saved ? JSON.parse(saved) : INITIAL_PLAYERS;
       const seen = new Set<string>();
@@ -119,6 +140,17 @@ export default function App({
 
   const [rounds, setRounds] = useState<Round[]>(() => {
     try {
+      if (activeSessionId) {
+        const cached = getOfflineSession(activeSessionId);
+        if (cached) {
+          if (Array.isArray(cached.rounds)) {
+            return sanitizeRounds(cached.rounds, cached.players || INITIAL_PLAYERS);
+          }
+          return [];
+        }
+        // Active session ID has no rounds yet: start clean, do not inherit old global rounds
+        return [];
+      }
       const saved = localStorage.getItem(STORAGE_KEYS.ROUNDS);
       const parsed: Round[] = saved ? JSON.parse(saved) : [];
       return sanitizeRounds(parsed, INITIAL_PLAYERS);
@@ -127,7 +159,7 @@ export default function App({
     }
   });
 
-  const [currentTab, setCurrentTab] = useState<TabType>('active');
+  const [currentTab, setCurrentTab] = useState<TabType>('matches');
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [showResetModal, setShowResetModal] = useState(false);
   const [showFairnessModal, setShowFairnessModal] = useState(false);
@@ -153,20 +185,21 @@ export default function App({
     soundFx.playPointChime();
   };
 
-  // Auto-replacement & Duo notification banner
+  // Auto-replacement, Duo & Batch Fairness notification banner
   const [replacementNotice, setReplacementNotice] = useState<{
     id: string;
     title: string;
     description: string;
     courtNumber?: number;
-    type?: 'replacement' | 'duo' | 'break';
+    type?: 'replacement' | 'duo' | 'break' | 'fairness_warning' | 'batch';
   } | null>(null);
 
   useEffect(() => {
     if (!replacementNotice) return;
+    const duration = replacementNotice.type === 'fairness_warning' ? 14000 : 7000;
     const timer = setTimeout(() => {
       setReplacementNotice(null);
-    }, 7000);
+    }, duration);
     return () => clearTimeout(timer);
   }, [replacementNotice]);
 
@@ -293,12 +326,14 @@ export default function App({
 
         const opCount = s.openPlay?.activeMatches ? Object.keys(s.openPlay.activeMatches).length : 0;
         const extraMsg = opCount > 0 ? ` & ${opCount} active Open Play courts` : '';
-        setTransferToast({
-          id: Date.now().toString(),
-          title: `Session ${s.id} Transferred!`,
-          description: `Transferred ${s.players?.length || 0} players, ${s.rounds?.length || 0} tournament rounds${extraMsg}. Match session ready!`,
-        });
-        soundFx.playVictoryFanfare();
+        if ((ce.detail as any)?.isExplicitTransfer) {
+          setTransferToast({
+            id: Date.now().toString(),
+            title: `Session ${s.id} Transferred!`,
+            description: `Transferred ${s.players?.length || 0} players, ${s.rounds?.length || 0} tournament rounds${extraMsg}. Match session ready!`,
+          });
+          soundFx.playVictoryFanfare();
+        }
       }
     };
 
@@ -379,8 +414,11 @@ export default function App({
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEYS.ROUNDS, JSON.stringify(rounds));
+      if (sessionId) {
+        saveSessionOfflineCache(sessionId, { rounds });
+      }
     } catch {}
-  }, [rounds]);
+  }, [rounds, sessionId]);
 
   useEffect(() => {
     setRounds((prevRounds) => sanitizeRounds(prevRounds, players));
@@ -417,6 +455,12 @@ export default function App({
   // - Replacement on deck or in the hole should ONLY happen when a player quits, is removed, or break/paused!
   const [upcomingMatches, setUpcomingMatches] = useState<UpcomingMatch[]>(() => {
     try {
+      if (activeSessionId) {
+        const cached = getOfflineSession(activeSessionId);
+        if (cached && Array.isArray(cached.upcomingMatches) && cached.upcomingMatches.length > 0) {
+          return cached.upcomingMatches;
+        }
+      }
       const saved = localStorage.getItem(STORAGE_KEYS.UPCOMING);
       if (saved) {
         const parsed = JSON.parse(saved);
@@ -433,12 +477,15 @@ export default function App({
     });
   });
 
-  // Sync upcoming matches to localStorage
+  // Sync upcoming matches to localStorage and per-session offline cache
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEYS.UPCOMING, JSON.stringify(upcomingMatches));
+      if (sessionId) {
+        saveSessionOfflineCache(sessionId, { upcomingMatches });
+      }
     } catch {}
-  }, [upcomingMatches]);
+  }, [upcomingMatches, sessionId]);
 
   // If upcoming matches are empty on start, generate initial upcoming queue
   useEffect(() => {
@@ -566,16 +613,100 @@ export default function App({
 
   // Generate brand new session ID
   const handleGenerateNewSession = () => {
-    const newId = generateSessionId();
-    const token = generateOrganizerToken();
-    setOrganizerToken(newId, token);
-    setSessionId(newId);
-    saveSessionToCloud(newId, {
+    // Preserve current session state in backup snapshot before creating new ID
+    saveSessionBackupSnapshot({
+      id: sessionId,
       config,
       players,
       rounds,
       upcomingMatches,
       openPlay: getCurrentOpenPlayData(),
+      updatedAt: Date.now(),
+    });
+
+    const newId = generateSessionId();
+    const token = generateOrganizerToken();
+    setOrganizerToken(newId, token);
+
+    // Clean match and round state for the fresh session
+    setRounds([]);
+    setSelectedRoundNumber(null);
+    setReplacementNotice(null);
+    setLastBatchConfig(null);
+    try {
+      localStorage.removeItem(STORAGE_KEYS.ROUNDS);
+      localStorage.removeItem(STORAGE_KEYS.LAST_BATCH_CONFIG);
+      if (sessionId) localStorage.removeItem(`fairplay_last_batch_config_${sessionId}`);
+    } catch {}
+
+    const freshUpcoming = predictNextTwoMatches({
+      players,
+      rounds: [],
+      courtsCount: config.courtsCount,
+      playersPerTeam: config.playersPerTeam,
+    });
+    setUpcomingMatches(freshUpcoming);
+
+    // Clean Open Play state
+    const cleanOpenPlay: OpenPlaySessionData = {
+      config: {
+        sessionName: config.sessionName || 'Open Play Session',
+        sport: config.sport,
+        format: config.format === 'singles' ? 'singles' : 'doubles',
+        courtsCount: config.courtsCount,
+        targetPoints: config.targetPoints,
+        winByTwo: config.winByTwo,
+        autoDispatchNext: true,
+        benchRotationRule: 'most_games',
+        nextQueueTurn: 'winners',
+      },
+      activeMatches: {},
+      history: [],
+      winnersQueue: [],
+      losersQueue: [],
+      restingBench: (players || []).map((p) => p.id),
+      nextQueueTurn: 'winners',
+      players,
+      updatedAt: Date.now(),
+    };
+
+    // Synchronously write clean new session to offline cache IMMEDIATELY so turning off data will never resurrect old rounds
+    saveSessionOfflineCache(newId, {
+      id: newId,
+      config,
+      players,
+      rounds: [],
+      upcomingMatches: freshUpcoming,
+      openPlay: cleanOpenPlay,
+      organizerToken: token,
+      updatedAt: Date.now(),
+    });
+
+    setSessionId(newId);
+
+    recordRecentSession(newId, {
+      name: config.sessionName,
+      sport: config.sport,
+      playersCount: players.length,
+      roundsCount: 0,
+    });
+
+    // Update URL immediately
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('session', newId);
+      url.searchParams.delete('editToken');
+      url.searchParams.delete('token');
+      url.searchParams.delete('key');
+      window.history.replaceState({}, '', url.toString());
+    } catch {}
+
+    saveSessionToCloud(newId, {
+      config,
+      players,
+      rounds: [],
+      upcomingMatches: freshUpcoming,
+      openPlay: cleanOpenPlay,
     }).then((res) => {
       if (res.success) {
         setLastSyncedAt(Date.now());
@@ -603,18 +734,132 @@ export default function App({
   // Current active round selection (allows navigating to previous rounds)
   const [selectedRoundNumber, setSelectedRoundNumber] = useState<number | null>(null);
 
+  // Batch generation modal state and configuration cache
+  const [showBatchGeneratorModal, setShowBatchGeneratorModal] = useState<boolean>(false);
+  const [lastBatchConfig, setLastBatchConfig] = useState<BatchGenerationConfig | null>(() => {
+    try {
+      const key = activeSessionId ? `fairplay_last_batch_config_${activeSessionId}` : STORAGE_KEYS.LAST_BATCH_CONFIG;
+      const stored = localStorage.getItem(key) || localStorage.getItem(STORAGE_KEYS.LAST_BATCH_CONFIG);
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  });
+
   const activeRoundIndex = useMemo(() => {
     if (rounds.length === 0) return 0;
     if (selectedRoundNumber !== null) {
       const foundIdx = rounds.findIndex((r) => r.roundNumber === selectedRoundNumber);
       if (foundIdx !== -1) return foundIdx;
     }
+    // Default to the first incomplete round so pre-generated future rounds don't force-jump away from live play
+    const firstIncompleteIdx = rounds.findIndex((r) => !r.completed);
+    if (firstIncompleteIdx !== -1) return firstIncompleteIdx;
     return rounds.length - 1;
   }, [rounds, selectedRoundNumber]);
 
   const currentRound = rounds.length > 0 ? rounds[activeRoundIndex] : null;
 
-  // Generate Next Fair Round
+  // Multi-Round Batch Generation Handler
+  const handleBatchGenerateMatches = (batchConfig: BatchGenerationConfig) => {
+    if (batchConfig.courtsCount !== config.courtsCount) {
+      setConfig((prev) => ({ ...prev, courtsCount: batchConfig.courtsCount }));
+    }
+
+    const onDeck = upcomingMatches.find((m) => m.matchNumber === 1);
+    const { newRounds, validation } = generateBatchFairRounds({
+      players,
+      rounds,
+      courtsCount: batchConfig.courtsCount,
+      playersPerTeam: config.playersPerTeam,
+      roundCount: batchConfig.roundCount || 1,
+      activePlayerIds: batchConfig.activePlayerIds,
+      onDeckMatch: onDeck,
+    });
+
+    if (newRounds.length === 0) return;
+
+    const updatedRounds = [...rounds, ...newRounds];
+    setRounds(updatedRounds);
+
+    // Persist last batch configuration (keyed to current session)
+    setLastBatchConfig(batchConfig);
+    try {
+      const key = sessionId ? `fairplay_last_batch_config_${sessionId}` : STORAGE_KEYS.LAST_BATCH_CONFIG;
+      localStorage.setItem(key, JSON.stringify(batchConfig));
+      localStorage.setItem(STORAGE_KEYS.LAST_BATCH_CONFIG, JSON.stringify(batchConfig));
+    } catch {}
+
+    // Focus on active round
+    if (selectedRoundNumber === null || !rounds.some((r) => r.roundNumber === selectedRoundNumber)) {
+      setSelectedRoundNumber(newRounds[0].roundNumber);
+    }
+    setCurrentTab('matches');
+
+    // Refresh upcoming queue
+    const freshUpcoming = predictNextTwoMatches({
+      players,
+      rounds: updatedRounds,
+      courtsCount: batchConfig.courtsCount,
+      playersPerTeam: config.playersPerTeam,
+    });
+    setUpcomingMatches(freshUpcoming);
+
+    const totalMatches = newRounds.reduce((acc, r) => acc + r.matches.length, 0);
+
+    if (validation.warnings.length > 0) {
+      setReplacementNotice({
+        id: `batch-warn-${Date.now()}`,
+        title: `Generated ${newRounds.length} Rounds (Fairness Notice)`,
+        description: validation.warnings.join(' • '),
+        type: 'fairness_warning',
+      });
+    } else {
+      setReplacementNotice({
+        id: `batch-success-${Date.now()}`,
+        title: `Generated ${newRounds.length} Fair Rounds`,
+        description: `Scheduled ${totalMatches} matches across ${batchConfig.courtsCount} court${batchConfig.courtsCount > 1 ? 's' : ''} for ${batchConfig.activePlayerIds.length} active players.`,
+        type: 'batch',
+      });
+    }
+
+    // Check fairness balance
+    const newMetric = calculateFairnessMetric(players, updatedRounds);
+    if (newMetric.spread === 0 && newMetric.minPlayed > 0) {
+      soundFx.playVictoryFanfare();
+      try {
+        confetti({
+          particleCount: 80,
+          spread: 80,
+          origin: { y: 0.6 },
+        });
+      } catch {}
+    } else {
+      soundFx.playPointChime();
+    }
+  };
+
+  // Quick Generate More Matches Action (continues seamlessly if roster hasn't changed)
+  const handleQuickGenerateMoreMatches = () => {
+    if (!lastBatchConfig) {
+      setShowBatchGeneratorModal(true);
+      return;
+    }
+
+    const currentActiveIds = players.filter((p) => p.active).map((p) => p.id).sort();
+    const lastActiveIds = [...(lastBatchConfig.activePlayerIds || [])].sort();
+    const rosterChanged =
+      currentActiveIds.length !== lastActiveIds.length ||
+      currentActiveIds.some((id, idx) => id !== lastActiveIds[idx]);
+
+    if (rosterChanged) {
+      setShowBatchGeneratorModal(true);
+    } else {
+      handleBatchGenerateMatches(lastBatchConfig);
+    }
+  };
+
+  // Generate Next Fair Round (Single Round fallback)
   const handleGenerateNextRound = () => {
     const onDeck = upcomingMatches.find((m) => m.matchNumber === 1);
     const newRound = generateNextFairRound({
@@ -628,7 +873,7 @@ export default function App({
     const updatedRounds = [...rounds, newRound];
     setRounds(updatedRounds);
     setSelectedRoundNumber(newRound.roundNumber);
-    setCurrentTab('active');
+    setCurrentTab('matches');
 
     // If new cycle reached, trigger fanfare!
     const newMetric = calculateFairnessMetric(players, updatedRounds);
@@ -1359,14 +1604,16 @@ export default function App({
   // Explicitly bench a player from an active court match and immediately sub in the prioritized bench player
   const handleBenchAndReplacePlayer = (matchId: string, playerToBenchId: string) => {
     if (rounds.length === 0) return;
-    const latestRound = rounds[rounds.length - 1];
-    if (latestRound.completed) return;
+    const targetRoundIndex = rounds.findIndex((r) => r.matches.some((m) => m.id === matchId));
+    if (targetRoundIndex === -1) return;
+    const targetRound = rounds[targetRoundIndex];
+    if (targetRound.completed) return;
 
     const targetPlayer = players.find((p) => p.id === playerToBenchId);
     if (!targetPlayer) return;
 
     const result = benchAndReplacePlayerInMatch({
-      round: latestRound,
+      round: targetRound,
       matchId,
       playerToBenchId,
       players,
@@ -1376,7 +1623,7 @@ export default function App({
     if (result.replaced) {
       setRounds((prev) => {
         const next = [...prev];
-        next[next.length - 1] = result.updatedRound;
+        next[targetRoundIndex] = result.updatedRound;
         return next;
       });
 
@@ -1398,7 +1645,7 @@ export default function App({
       }
 
       const replacementName = result.replacementPlayer?.name;
-      const match = latestRound.matches.find((m) => m.id === matchId);
+      const match = targetRound.matches.find((m) => m.id === matchId);
       const courtNum = match ? match.courtNumber : 1;
 
       // If the benched player was in a locked duo, break the duo
@@ -1502,10 +1749,23 @@ export default function App({
   // Reset Session (clears rounds and matches, retains roster)
   const handleResetSession = () => {
     try {
+      // Safety backup snapshot before reset
+      saveSessionBackupSnapshot({
+        id: sessionId,
+        config,
+        players,
+        rounds,
+        upcomingMatches,
+        openPlay: getCurrentOpenPlayData(),
+        updatedAt: Date.now(),
+      });
       setRounds([]);
       setSelectedRoundNumber(null);
       setReplacementNotice(null);
+      setLastBatchConfig(null);
       localStorage.removeItem(STORAGE_KEYS.ROUNDS);
+      localStorage.removeItem(STORAGE_KEYS.LAST_BATCH_CONFIG);
+      if (sessionId) localStorage.removeItem(`fairplay_last_batch_config_${sessionId}`);
       const fresh = predictNextTwoMatches({
         players,
         rounds: [],
@@ -1514,6 +1774,21 @@ export default function App({
       });
       setUpcomingMatches(fresh);
       localStorage.removeItem(STORAGE_KEYS.UPCOMING);
+
+      // SYNCHRONOUSLY update offline cache for current session ID so turning off data will NEVER restore old rounds
+      saveSessionOfflineCache(sessionId, {
+        rounds: [],
+        upcomingMatches: fresh,
+        updatedAt: Date.now(),
+      });
+
+      // Also trigger cloud save
+      saveSessionToCloud(sessionId, {
+        config,
+        players,
+        rounds: [],
+        upcomingMatches: fresh,
+      }).catch(() => {});
     } catch (err) {
       console.error('Failed to reset session', err);
     }
@@ -1522,6 +1797,16 @@ export default function App({
   // Clear Roster (clears all players, rounds, and matches)
   const handleClearRoster = () => {
     try {
+      // Safety backup snapshot before clearing roster
+      saveSessionBackupSnapshot({
+        id: sessionId,
+        config,
+        players,
+        rounds,
+        upcomingMatches,
+        openPlay: getCurrentOpenPlayData(),
+        updatedAt: Date.now(),
+      });
       setPlayers([]);
       setRounds([]);
       setSelectedRoundNumber(null);
@@ -1532,6 +1817,22 @@ export default function App({
       localStorage.removeItem(STORAGE_KEYS.ROUNDS);
       localStorage.removeItem(STORAGE_KEYS.UPCOMING);
       emitRosterSync('social', []);
+
+      // SYNCHRONOUSLY update offline cache for current session ID
+      saveSessionOfflineCache(sessionId, {
+        players: [],
+        rounds: [],
+        upcomingMatches: [],
+        updatedAt: Date.now(),
+      });
+
+      // Also trigger cloud save
+      saveSessionToCloud(sessionId, {
+        config,
+        players: [],
+        rounds: [],
+        upcomingMatches: [],
+      }).catch(() => {});
     } catch (err) {
       console.error('Failed to clear roster', err);
     }
@@ -1625,12 +1926,16 @@ export default function App({
           </div>
         )}
 
-        {/* Dynamic Auto-Replacement & Duo Alert Banner */}
+        {/* Dynamic Auto-Replacement, Duo & Batch Fairness Alert Banner */}
         {replacementNotice && (
           <div
             id="alert-auto-replacement"
             className={`mb-3 sm:mb-4 p-2.5 sm:p-3 rounded-xl sm:rounded-2xl text-white border shadow-sm flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2 duration-300 ${
-              replacementNotice.type === 'duo'
+              replacementNotice.type === 'fairness_warning'
+                ? 'bg-amber-950 border-amber-500/80 shadow-amber-950/40'
+                : replacementNotice.type === 'batch'
+                ? 'bg-indigo-950 border-indigo-600/80 shadow-indigo-950/40'
+                : replacementNotice.type === 'duo'
                 ? 'bg-emerald-950 border-emerald-700'
                 : replacementNotice.type === 'break'
                 ? 'bg-rose-950 border-rose-800'
@@ -1640,14 +1945,22 @@ export default function App({
             <div className="flex items-center gap-3 min-w-0">
               <div
                 className={`w-10 h-10 rounded-xl flex items-center justify-center font-black shrink-0 shadow-sm ${
-                  replacementNotice.type === 'duo'
+                  replacementNotice.type === 'fairness_warning'
+                    ? 'bg-amber-400 text-amber-950'
+                    : replacementNotice.type === 'batch'
+                    ? 'bg-yellow-400 text-indigo-950'
+                    : replacementNotice.type === 'duo'
                     ? 'bg-emerald-400 text-emerald-950'
                     : replacementNotice.type === 'break'
                     ? 'bg-rose-400 text-rose-950'
                     : 'bg-amber-400 text-indigo-950'
                 }`}
               >
-                {replacementNotice.type === 'duo' ? (
+                {replacementNotice.type === 'fairness_warning' ? (
+                  <AlertTriangle className="w-5 h-5 text-amber-950" />
+                ) : replacementNotice.type === 'batch' ? (
+                  <Layers className="w-5 h-5 text-indigo-950" />
+                ) : replacementNotice.type === 'duo' ? (
                   <Link2 className="w-5 h-5" />
                 ) : replacementNotice.type === 'break' ? (
                   <Unlink className="w-5 h-5" />
@@ -1660,14 +1973,22 @@ export default function App({
                   <span>{replacementNotice.title}</span>
                   <span
                     className={`text-[10px] uppercase font-black px-2 py-0.5 rounded-md border ${
-                      replacementNotice.type === 'duo'
+                      replacementNotice.type === 'fairness_warning'
+                        ? 'bg-amber-400/20 text-yellow-300 border-amber-400/40'
+                        : replacementNotice.type === 'batch'
+                        ? 'bg-yellow-400/20 text-yellow-300 border-yellow-400/40'
+                        : replacementNotice.type === 'duo'
                         ? 'bg-emerald-400/20 text-emerald-300 border-emerald-400/30'
                         : replacementNotice.type === 'break'
                         ? 'bg-rose-400/20 text-rose-300 border-rose-400/30'
                         : 'bg-amber-400/20 text-yellow-300 border-amber-400/30'
                     }`}
                   >
-                    {replacementNotice.type === 'duo'
+                    {replacementNotice.type === 'fairness_warning'
+                      ? 'Fairness Notice'
+                      : replacementNotice.type === 'batch'
+                      ? 'Batch Generated'
+                      : replacementNotice.type === 'duo'
                       ? 'Locked Duo'
                       : replacementNotice.type === 'break'
                       ? 'Duo Separated'
@@ -1675,8 +1996,12 @@ export default function App({
                   </span>
                 </div>
                 <p
-                  className={`text-xs mt-0.5 truncate sm:whitespace-normal ${
-                    replacementNotice.type === 'duo'
+                  className={`text-xs mt-0.5 sm:whitespace-normal ${
+                    replacementNotice.type === 'fairness_warning'
+                      ? 'text-amber-100'
+                      : replacementNotice.type === 'batch'
+                      ? 'text-indigo-100'
+                      : replacementNotice.type === 'duo'
                       ? 'text-emerald-200'
                       : replacementNotice.type === 'break'
                       ? 'text-rose-200'
@@ -1698,13 +2023,11 @@ export default function App({
           </div>
         )}
 
-        {currentTab === 'active' && (
+        {(currentTab === 'matches' || currentTab === 'active') && (
           <ActiveRoundView
             currentRound={currentRound}
             rounds={rounds}
             roundsCount={rounds.length}
-            activeRoundIndex={activeRoundIndex}
-            onSelectRound={(roundNum) => setSelectedRoundNumber(roundNum)}
             players={players}
             playersMap={playersMap}
             config={config}
@@ -1726,14 +2049,11 @@ export default function App({
             onBenchAndReplacePlayer={handleBenchAndReplacePlayer}
             onStartMatch={handleStartMatch}
             onShuffleLineup={handleShuffleSocialMatch}
-          />
-        )}
-
-        {currentTab === 'standings' && (
-          <StandingsView
-            players={players}
-            rounds={rounds}
-            config={config}
+            onOpenBatchGenerator={() => setShowBatchGeneratorModal(true)}
+            onQuickGenerateMore={handleQuickGenerateMoreMatches}
+            lastBatchConfig={lastBatchConfig}
+            onDeleteMatch={handleDeleteMatch}
+            onDeleteRound={handleDeleteRound}
           />
         )}
 
@@ -1745,6 +2065,14 @@ export default function App({
             onUpdateScore={handleUpdateScore}
             onDeleteMatch={handleDeleteMatch}
             onDeleteRound={handleDeleteRound}
+          />
+        )}
+
+        {currentTab === 'standings' && (
+          <StandingsView
+            players={players}
+            rounds={rounds}
+            config={config}
           />
         )}
 
@@ -1832,6 +2160,16 @@ export default function App({
         isOpen={showOnboarding}
         initialConfig={config}
         onComplete={handleCompleteOnboarding}
+      />
+
+      <BatchMatchGeneratorModal
+        isOpen={showBatchGeneratorModal}
+        onClose={() => setShowBatchGeneratorModal(false)}
+        players={players}
+        config={config}
+        initialConfig={lastBatchConfig || undefined}
+        onGenerate={handleBatchGenerateMatches}
+        existingRoundsCount={rounds.length}
       />
     </div>
   );

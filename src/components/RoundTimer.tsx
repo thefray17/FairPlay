@@ -146,4 +146,4 @@ export const RoundTimer: React.FC<RoundTimerProps> = ({
       </div>
     </div>
   );
-};
+}

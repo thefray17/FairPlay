@@ -1,4 +1,4 @@
-import { MatchFormat, Player, SessionConfig } from '../types';
+import { SessionConfig, SportType, MatchFormat, Player } from '../types';
 
 export const AVATAR_COLORS = [
   'bg-emerald-500 text-white',
@@ -26,10 +26,7 @@ export const DEFAULT_CONFIG: SessionConfig = {
   allowDraw: false,
 };
 
-export const SPORT_PRESETS: Record<
-  string,
-  { name: string; targetPoints: number; defaultFormat: MatchFormat }
-> = {
+export const SPORT_PRESETS: Record<SportType, { name: string; targetPoints: number; defaultFormat: MatchFormat }> = {
   pickleball: { name: 'Pickleball', targetPoints: 11, defaultFormat: 'doubles' },
   badminton: { name: 'Badminton', targetPoints: 21, defaultFormat: 'doubles' },
   tennis: { name: 'Tennis', targetPoints: 6, defaultFormat: 'doubles' },

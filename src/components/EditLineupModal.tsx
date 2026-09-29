@@ -314,7 +314,12 @@ export const EditLineupModal: React.FC<EditLineupModalProps> = ({
       id="edit-lineup-modal"
       className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in"
     >
-      <div className="bg-white rounded-3xl max-w-2xl w-full p-4 sm:p-6 shadow-2xl border border-slate-200 text-slate-900 max-h-[94vh] flex flex-col overflow-hidden">
+      <div
+        className="bg-white rounded-2xl sm:rounded-3xl max-w-2xl w-full p-3 sm:p-5 shadow-2xl border border-slate-200 text-slate-900 flex flex-col overflow-hidden"
+        style={{
+          maxHeight: 'calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 0.5rem)',
+        }}
+      >
         {/* Header */}
         <div className="flex items-center justify-between pb-3.5 border-b border-slate-100 shrink-0">
           <div className="min-w-0 flex-1 mr-3">

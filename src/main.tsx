@@ -1,6 +1,6 @@
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
-import {Root} from './Root.tsx';
+import {Root} from './Root';
 import {ErrorBoundary} from './components/common/ErrorBoundary';
 import './index.css';
 
@@ -21,5 +21,3 @@ if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
       });
   });
 }
-
-

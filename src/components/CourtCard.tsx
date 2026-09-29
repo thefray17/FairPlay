@@ -1,6 +1,6 @@
 import React from 'react';
 import { Match, Player, SessionConfig } from '../types';
-import { Trophy, CheckCircle2, RotateCcw, Plus, Minus, Edit3, ArrowRightLeft, Sparkles, Link2, Play } from 'lucide-react';
+import { Trophy, CheckCircle2, RotateCcw, Plus, Minus, Edit3, ArrowRightLeft, Sparkles, Link2, Play, Clock } from 'lucide-react';
 import { soundFx } from '../utils/audio';
 
 interface CourtCardProps {
@@ -15,6 +15,7 @@ interface CourtCardProps {
   onBenchAndReplacePlayer?: (matchId: string, playerId: string) => void;
   onStartMatch?: (matchId: string) => void;
   onShuffleLineup?: (matchId: string) => void;
+  isReadOnly?: boolean;
 }
 
 export const CourtCard: React.FC<CourtCardProps> = ({
@@ -29,6 +30,7 @@ export const CourtCard: React.FC<CourtCardProps> = ({
   onBenchAndReplacePlayer,
   onStartMatch,
   onShuffleLineup,
+  isReadOnly = false,
 }) => {
   const team1Players = match.team1.playerIds.map((id) => playersMap[id]).filter(Boolean);
   const team2Players = match.team2.playerIds.map((id) => playersMap[id]).filter(Boolean);
@@ -54,7 +56,7 @@ export const CourtCard: React.FC<CourtCardProps> = ({
 
   const targetPoints = config.targetPoints;
   const winByTwo = config.winByTwo;
-  const isLive = !match.completed && match.status === 'in_progress';
+  const isLive = !isReadOnly && !match.completed && match.status === 'in_progress';
 
   const isTeam1WinConditionMet = match.score1 >= targetPoints && (!winByTwo || match.score1 >= match.score2 + 2);
   const isTeam2WinConditionMet = match.score2 >= targetPoints && (!winByTwo || match.score2 >= match.score1 + 2);
@@ -136,7 +138,7 @@ export const CourtCard: React.FC<CourtCardProps> = ({
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-          {onShuffleLineup && !match.completed && (
+          {!isReadOnly && onShuffleLineup && !match.completed && (
             <button
               type="button"
               id={`btn-shuffle-lineup-${match.id}`}
@@ -156,7 +158,7 @@ export const CourtCard: React.FC<CourtCardProps> = ({
             </button>
           )}
 
-          {onEditLineup && !match.completed && (
+          {!isReadOnly && onEditLineup && !match.completed && (
             <button
               type="button"
               id={`btn-edit-lineup-${match.id}`}
@@ -180,6 +182,10 @@ export const CourtCard: React.FC<CourtCardProps> = ({
           ) : isLive ? (
             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-black text-yellow-300 shadow-xs animate-pulse">
               ● Live
+            </span>
+          ) : isReadOnly ? (
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-50 text-indigo-800 border border-indigo-200">
+              <Clock className="w-3 h-3 text-indigo-600" /> Scheduled
             </span>
           ) : (
             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-slate-200 text-slate-700 border border-slate-300 shadow-2xs">
@@ -518,41 +524,43 @@ export const CourtCard: React.FC<CourtCardProps> = ({
           )}
         </div>
 
-        <div className="w-full sm:w-auto flex items-center gap-2 flex-wrap">
-          {isPending ? (
-            <button
-              type="button"
-              id={`btn-start-match-${match.id}`}
-              onClick={() => {
-                soundFx.playPointChime();
-                onStartMatch?.(match.id);
-              }}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl sm:rounded-2xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-black text-xs uppercase tracking-wider transition-all shadow-sm active:scale-95 cursor-pointer min-h-[40px] sm:min-h-[44px]"
-            >
-              <Play className="w-3.5 h-3.5 fill-current" /> Start Match
-            </button>
-          ) : isLive ? (
-            <button
-              type="button"
-              id={`btn-finish-match-${match.id}`}
-              onClick={handleFinish}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-5 py-2.5 sm:py-2.5 rounded-xl sm:rounded-2xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-black text-xs uppercase tracking-wider transition-all shadow-sm active:scale-95 cursor-pointer min-h-[40px] sm:min-h-[44px]"
-            >
-              <Trophy className="w-3.5 h-3.5 text-yellow-400" /> Finish &amp; Record Match
-            </button>
-          ) : (
-            <button
-              type="button"
-              id={`btn-reopen-match-${match.id}`}
-              onClick={() => onReopenMatch(match.id)}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-1 px-3 py-2 sm:py-1.5 rounded-xl bg-slate-800 hover:bg-black active:scale-95 text-white font-bold text-xs uppercase tracking-wider transition-all cursor-pointer min-h-[36px] sm:min-h-0"
-              title="Re-open match to edit score"
-              aria-label="Re-open match to edit score"
-            >
-              <RotateCcw className="w-3 h-3" />
-            </button>
-          )}
-        </div>
+        {!isReadOnly && (
+          <div className="w-full sm:w-auto flex items-center gap-2 flex-wrap">
+            {isPending ? (
+              <button
+                type="button"
+                id={`btn-start-match-${match.id}`}
+                onClick={() => {
+                  soundFx.playPointChime();
+                  onStartMatch?.(match.id);
+                }}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl sm:rounded-2xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-black text-xs uppercase tracking-wider transition-all shadow-sm active:scale-95 cursor-pointer min-h-[40px] sm:min-h-[44px]"
+              >
+                <Play className="w-3.5 h-3.5 fill-current" /> Start Match
+              </button>
+            ) : isLive ? (
+              <button
+                type="button"
+                id={`btn-finish-match-${match.id}`}
+                onClick={handleFinish}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-5 py-2.5 sm:py-2.5 rounded-xl sm:rounded-2xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-black text-xs uppercase tracking-wider transition-all shadow-sm active:scale-95 cursor-pointer min-h-[40px] sm:min-h-[44px]"
+              >
+                <Trophy className="w-3.5 h-3.5 text-yellow-400" /> Finish &amp; Record Match
+              </button>
+            ) : (
+              <button
+                type="button"
+                id={`btn-reopen-match-${match.id}`}
+                onClick={() => onReopenMatch(match.id)}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-1 px-3 py-2 sm:py-1.5 rounded-xl bg-slate-800 hover:bg-black active:scale-95 text-white font-bold text-xs uppercase tracking-wider transition-all cursor-pointer min-h-[36px] sm:min-h-0"
+                title="Re-open match to edit score"
+                aria-label="Re-open match to edit score"
+              >
+                <RotateCcw className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

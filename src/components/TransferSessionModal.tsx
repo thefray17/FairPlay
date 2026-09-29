@@ -17,6 +17,14 @@ import {
   KeyRound,
   Users,
   Lock,
+  History,
+  RotateCcw,
+  Clock,
+  ShieldCheck,
+  ChevronDown,
+  ChevronUp,
+  HelpCircle,
+  Archive,
 } from 'lucide-react';
 import {
   extractSessionId,
@@ -24,6 +32,12 @@ import {
   buildSessionShareUrl,
   getOrganizerToken,
   isSessionOrganizer,
+  getKnownDeviceSessions,
+  RecentSessionEntry,
+  getSessionBackupSnapshot,
+  applySessionToLocalStorage,
+  saveSessionOfflineCache,
+  SESSION_LOADED_EVENT,
 } from '../utils/sessionSync';
 import { soundFx } from '../utils/audio';
 import { QRCameraScanner } from './QRCameraScanner';
@@ -66,6 +80,54 @@ export const TransferSessionModal: React.FC<TransferSessionModalProps> = ({
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [confirmNewSession, setConfirmNewSession] = useState(false);
   const [showCameraScanner, setShowCameraScanner] = useState(false);
+  const [showRecoveryGuide, setShowRecoveryGuide] = useState(false);
+  const [deviceSessions, setDeviceSessions] = useState<RecentSessionEntry[]>([]);
+  const [backupSnapshot, setBackupSnapshot] = useState<{ timestamp: number; session: any } | null>(null);
+  const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  // Refresh recent device sessions and backup snapshot when modal opens or tab changes
+  useEffect(() => {
+    if (isOpen) {
+      setDeviceSessions(getKnownDeviceSessions());
+      setBackupSnapshot(getSessionBackupSnapshot());
+    }
+  }, [isOpen, activeTab]);
+
+  const handleRestoreSnapshot = async () => {
+    if (!backupSnapshot || !backupSnapshot.session) return;
+    try {
+      setLoadLoading(true);
+      applySessionToLocalStorage(backupSnapshot.session);
+      if (backupSnapshot.session.id) {
+        saveSessionOfflineCache(backupSnapshot.session.id, backupSnapshot.session);
+      }
+      window.dispatchEvent(
+        new CustomEvent(SESSION_LOADED_EVENT, {
+          detail: { session: backupSnapshot.session },
+        })
+      );
+      setLoadSuccess(`Session snapshot restored successfully!`);
+      soundFx.playVictoryFanfare();
+      setTimeout(() => {
+        onClose();
+      }, 1500);
+    } catch (err: any) {
+      setLoadError(err?.message || 'Failed to restore snapshot');
+    } finally {
+      setLoadLoading(false);
+    }
+  };
 
   const cleanSessionId = sanitizeSessionCode(currentSessionId) || currentSessionId || '';
   const hasOrganizerAccess = isSessionOrganizer(cleanSessionId);
@@ -286,6 +348,18 @@ export const TransferSessionModal: React.FC<TransferSessionModalProps> = ({
               <span className="truncate block">Paste &amp; Load Session</span>
             </button>
           </div>
+
+          {isOffline && (
+            <div className="mt-3 p-2.5 bg-amber-500/25 border border-amber-300/40 rounded-xl text-xs text-amber-100 flex items-start gap-2 animate-fade-in">
+              <AlertCircle className="w-4 h-4 text-yellow-300 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold text-yellow-200">Data Connection Off (Offline Mode)</p>
+                <p className="text-[11px] text-amber-100/90 leading-relaxed">
+                  Your active match session and history are safely isolated and preserved locally on this device. When data is enabled, FairPlay syncs with the cloud automatically.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Modal Body - Scrollable */}
@@ -796,6 +870,157 @@ export const TransferSessionModal: React.FC<TransferSessionModalProps> = ({
                   </div>
                 </form>
               )}
+
+              {/* SECTION: Recent & Recoverable Sessions on this Device */}
+              {deviceSessions.length > 0 && (
+                <div className="space-y-2 pt-2 border-t border-slate-200">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                      <History className="w-4 h-4 text-indigo-600" />
+                      Sessions Found on this Device ({deviceSessions.length})
+                    </span>
+                    <HelpTip title="Device Session Discovery">
+                      <p>
+                        FairPlay remembers sessions you have organized or viewed on this device. Tap any session code to switch or restore its match history instantly.
+                      </p>
+                    </HelpTip>
+                  </div>
+
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto pr-0.5">
+                    {deviceSessions.map((s) => {
+                      const isCurrent = s.id === cleanSessionId;
+                      return (
+                        <div
+                          key={s.id}
+                          className={`p-2.5 rounded-xl border flex items-center justify-between gap-2.5 transition-all ${
+                            isCurrent
+                              ? 'bg-indigo-50/60 border-indigo-200'
+                              : 'bg-white hover:bg-slate-50 border-slate-200'
+                          }`}
+                        >
+                          <div className="min-w-0 flex items-center gap-2">
+                            <span className="font-mono text-sm font-black text-slate-900 tracking-wider px-2 py-0.5 bg-slate-100 rounded-md border border-slate-200">
+                              {s.id}
+                            </span>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {isCurrent && (
+                                  <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-indigo-600 text-white">
+                                    Current Active
+                                  </span>
+                                )}
+                                {s.hasOrganizerAccess && (
+                                  <span className="text-[9px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
+                                    <KeyRound className="w-2.5 h-2.5 text-amber-600" />
+                                    Organizer Key
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                                {s.name || 'Tournament / Open Play'}
+                                {s.playersCount ? ` • ${s.playersCount} players` : ''}
+                                {s.roundsCount ? ` • ${s.roundsCount} rounds` : ''}
+                              </p>
+                            </div>
+                          </div>
+
+                          {!isCurrent && (
+                            <button
+                              type="button"
+                              onClick={() => executeLoad(s.id)}
+                              disabled={loadLoading}
+                              className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-black text-[11px] uppercase tracking-wider transition-colors cursor-pointer shrink-0 active:scale-95 disabled:opacity-50"
+                            >
+                              Restore
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* SECTION: Backup Snapshot Restore */}
+              {backupSnapshot && (
+                <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-2xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black uppercase tracking-wider text-amber-950 flex items-center gap-1.5">
+                      <Archive className="w-4 h-4 text-amber-700" />
+                      Saved Session Backup Snapshot
+                    </span>
+                    <span className="text-[10px] text-amber-800 font-semibold">
+                      {new Date(backupSnapshot.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-amber-900/80 leading-relaxed">
+                    A safety snapshot was automatically preserved from your previous session (
+                    <span className="font-mono font-bold">{backupSnapshot.session.id || 'N/A'}</span>
+                    {backupSnapshot.session.players ? ` with ${backupSnapshot.session.players.length} players` : ''}
+                    {backupSnapshot.session.rounds ? ` and ${backupSnapshot.session.rounds.length} rounds` : ''}
+                    ). If your history got overwritten, you can restore it now.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleRestoreSnapshot}
+                    disabled={loadLoading}
+                    className="w-full py-2 px-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-black text-xs uppercase tracking-wider transition-all shadow-xs cursor-pointer flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-50"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Restore Last Session Snapshot &amp; History</span>
+                  </button>
+                </div>
+              )}
+
+              {/* SECTION: Step-by-Step Recovery Guide (Collapsible) */}
+              <div className="border border-slate-200 rounded-2xl overflow-hidden bg-slate-50/60">
+                <button
+                  type="button"
+                  onClick={() => setShowRecoveryGuide(!showRecoveryGuide)}
+                  className="w-full p-3 flex items-center justify-between text-left hover:bg-slate-100/70 transition-colors cursor-pointer"
+                >
+                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <HelpCircle className="w-4 h-4 text-indigo-600" />
+                    How do I recover a lost history or session?
+                  </span>
+                  {showRecoveryGuide ? (
+                    <ChevronUp className="w-4 h-4 text-slate-500" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-slate-500" />
+                  )}
+                </button>
+
+                {showRecoveryGuide && (
+                  <div className="p-3.5 pt-1 text-xs text-slate-600 space-y-2.5 border-t border-slate-200 bg-white">
+                    <div className="space-y-1">
+                      <span className="font-bold text-slate-900 block">1. Check your Browser URL History:</span>
+                      <p className="text-[11px] leading-relaxed text-slate-600">
+                        Open your browser history (<kbd className="px-1 py-0.5 bg-slate-100 border border-slate-300 rounded font-mono text-[10px]">Ctrl+H</kbd> or mobile menu → History). Search for <code className="text-indigo-700 font-mono">session=</code>. Any past link with your 4-digit code (or <code className="text-indigo-700 font-mono">&editToken=...</code>) will immediately restore your full session!
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="font-bold text-slate-900 block">2. Check Shared Links or Messages:</span>
+                      <p className="text-[11px] leading-relaxed text-slate-600">
+                        If you sent the session link or QR code to players or co-organizers via WhatsApp, SMS, or Telegram, open that message and tap the link or note down the 4-digit PIN.
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="font-bold text-slate-900 block">3. Cloud Persistence:</span>
+                      <p className="text-[11px] leading-relaxed text-slate-600">
+                        Generating a new session never deletes your previous session in the cloud. As long as you have the 4-digit PIN, enter it into the code box above to restore all rounds and matches.
+                      </p>
+                    </div>
+                    <div className="space-y-1 bg-amber-50 border border-amber-200 rounded-xl p-2.5">
+                      <span className="font-bold text-amber-950 block">⚠️ What if data was turned off and an old save appeared?</span>
+                      <p className="text-[11px] leading-relaxed text-amber-900">
+                        1. Turn mobile data or Wi-Fi back <strong>ON</strong>. Your new session was saved to the cloud under its PIN.<br />
+                        2. Look under <strong>"Sessions Found on this Device"</strong> above or enter your 4-digit PIN.<br />
+                        3. Tap <strong>Restore</strong> to reload your new session. Once reloaded, it is cached offline so turning off data will never lose it again!
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>

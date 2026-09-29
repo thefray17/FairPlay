@@ -1,13 +1,16 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, signInAnonymously, User } from 'firebase/auth';
+import { getAuth, signInAnonymously, User, Auth } from 'firebase/auth';
 import {
   getFirestore,
+  initializeFirestore,
   doc,
   setDoc,
   getDoc,
+  getDocFromServer,
   onSnapshot,
   collection,
   serverTimestamp,
+  setLogLevel,
   Unsubscribe,
 } from 'firebase/firestore';
 import { getAnalytics, isSupported } from 'firebase/analytics';
@@ -17,6 +20,11 @@ import { SessionData } from '../utils/sessionSync';
 // Merge with user-specified custom parameters like databaseURL and measurementId
 export const firebaseConfig = {
   ...rawConfig,
+  apiKey:
+    (rawConfig as any).apiKey ||
+    (typeof process !== 'undefined' && process.env?.FIREBASE_API_KEY) ||
+    (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_FIREBASE_API_KEY) ||
+    '',
   databaseURL:
     (rawConfig as any).databaseURL ||
     'https://debt-ledger-c4c93-default-rtdb.asia-southeast1.firebasedatabase.app',
@@ -26,35 +34,84 @@ export const firebaseConfig = {
 // Singleton initialization
 export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-// Auth instance for accounts/profiles and device session ownership
-export const auth = getAuth(app);
+// Silence internal reconnect logs from triggering spurious dev server alerts
+try {
+  setLogLevel('error');
+} catch {}
+
+// Auth instance for accounts/profiles and device session ownership (guarded against missing apiKey)
+export const auth: Auth | null = (() => {
+  try {
+    const key = firebaseConfig.apiKey;
+    if (!key || typeof key !== 'string' || !key.trim()) {
+      return null;
+    }
+    return getAuth(app);
+  } catch (err) {
+    console.warn('Firebase Auth initialization skipped:', err);
+    return null;
+  }
+})();
 
 // Anonymous auth helper to authenticate client device without requiring intrusive signup
 let authInitPromise: Promise<User | null> | null = null;
 export async function ensureFirebaseAuth(): Promise<User | null> {
-  if (typeof window === 'undefined') return null;
+  if (typeof window === 'undefined' || !auth) return null;
   if (auth.currentUser) return auth.currentUser;
 
   if (!authInitPromise) {
     authInitPromise = signInAnonymously(auth)
       .then((cred) => cred.user)
       .catch((err) => {
-        console.warn('Anonymous Firebase auth notice:', err);
-        return auth.currentUser || null;
+        console.debug('Anonymous Firebase auth offline notice:', err);
+        return auth?.currentUser || null;
       });
   }
   return authInitPromise;
 }
 
-// Auto-initialize anonymous auth on browser load
-if (typeof window !== 'undefined') {
+// Auto-initialize anonymous auth on browser load only if auth is configured
+if (typeof window !== 'undefined' && auth) {
   ensureFirebaseAuth().catch(() => {});
 }
 
-// Firestore instance targeting provisioned database
-export const db = rawConfig.firestoreDatabaseId
-  ? getFirestore(app, rawConfig.firestoreDatabaseId)
-  : getFirestore(app);
+// Firestore instance targeting provisioned database with automatic long-polling for iframe/proxy environments
+export const db = (() => {
+  try {
+    return rawConfig.firestoreDatabaseId
+      ? initializeFirestore(
+          app,
+          {
+            experimentalAutoDetectLongPolling: true,
+            ignoreUndefinedProperties: true,
+          },
+          rawConfig.firestoreDatabaseId
+        )
+      : initializeFirestore(app, {
+          experimentalAutoDetectLongPolling: true,
+          ignoreUndefinedProperties: true,
+        });
+  } catch {
+    return rawConfig.firestoreDatabaseId
+      ? getFirestore(app, rawConfig.firestoreDatabaseId)
+      : getFirestore(app);
+  }
+})();
+
+// Validate initial Firestore connection gracefully as required by integration skill
+async function testConnection() {
+  if (typeof window === 'undefined') return;
+  try {
+    await getDocFromServer(doc(db, 'test', 'connection'));
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      console.debug('Firestore client operating in offline cache mode.');
+    }
+  }
+}
+if (typeof window !== 'undefined') {
+  testConnection().catch(() => {});
+}
 
 // Safe Analytics initialization (prevents crashing in server or unsupported environments)
 export let analytics: ReturnType<typeof getAnalytics> | null = null;
@@ -112,7 +169,7 @@ export interface FirestoreErrorInfo {
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
   const err = error as { code?: string; message?: string };
-  const authUser = auth.currentUser;
+  const authUser = auth?.currentUser;
   const errorInfo: FirestoreErrorInfo = {
     error: err?.message || String(error),
     operationType,
